@@ -55,7 +55,7 @@ bash scripts/build-openssl.sh
 bash scripts/build-native.sh
 ```
 
-The daemon also accepts self-contained ZPL jobs from the command line. With the app open or the daemon running, use:
+The daemon also accepts self-contained ZPL jobs from the command line while the background process is running.
 
 ```sh
 target/debug/labelize-printer-daemon submit /absolute/path/to/label.zpl --wait
