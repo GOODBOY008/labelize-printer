@@ -96,7 +96,7 @@ pub fn validate_pixels(width: u32, height: u32) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RasterPage {
     pub file: PathBuf,
     pub width_mm: f64,
@@ -117,7 +117,7 @@ pub struct RasterManifest {
     pub pages: Vec<RasterPage>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PrintJobInput {
     Zpl { file: PathBuf },
@@ -134,7 +134,7 @@ pub enum JobState {
     Failed,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct JobRecord {
     pub id: String,
     pub title: String,
@@ -158,7 +158,7 @@ pub struct OutputReceipt {
     pub files: Vec<PathBuf>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct PlatformStatus {
     pub queue_installed: bool,
     pub autostart_installed: bool,
@@ -167,7 +167,7 @@ pub struct PlatformStatus {
     pub notes: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Snapshot {
     pub version: String,
     pub settings: Settings,

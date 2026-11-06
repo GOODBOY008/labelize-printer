@@ -11,16 +11,17 @@ if [[ "$architecture" != "$(uname -m)" ]]; then
   binary_dir="target/$rust_arch-apple-darwin/$profile"
   stage="dist/macos-$architecture-$profile"
 fi
-app="$stage/Labelize Printer.app"
+app="${LABELIZE_PRINTER_MACOS_STAGE:-$stage}/Labelize Printer.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/platform"
 cp "$binary_dir/labelize-printer" "$binary_dir/labelize-printer-daemon" "$binary_dir/labelize-printer-ipp" "$app/Contents/MacOS/"
 cp platform/macos/Info.plist "$app/Contents/Info.plist"
+cp platform/macos/LabelizePrinter.icns "$app/Contents/Resources/"
 cp -R platform/macos "$app/Contents/Resources/platform/"
 cp LICENSE THIRD_PARTY_NOTICES.md "$app/Contents/Resources/"
 cp -R licenses "$app/Contents/Resources/"
 for name in labelize-printer-ipp labelize-printer-daemon labelize-printer; do
   binary="$app/Contents/MacOS/$name"
-  if otool -L "$binary" | grep -E '/opt/homebrew|/usr/local|/Volumes' >/dev/null; then
+  if otool -L "$binary" | sed '1d' | grep -E '/opt/homebrew|/usr/local|/Volumes' >/dev/null; then
     echo "Unbundled build-machine dependency: $binary" >&2; exit 1
   fi
   codesign --force --sign - "$binary"

@@ -47,8 +47,10 @@ bash scripts/build-native.sh
 target/debug/labelize-printer
 ```
 
-打开应用，选择输出目录和分辨率，然后点击“添加 / 修复打印机”。需要管理员权限时，
+打开应用，选择输出目录和分辨率，然后点击「添加打印机」。需要管理员权限时，
 使用系统授权提示。日常接收、渲染和保存以登录用户权限运行。关闭 GPUI 窗口不会停止后台。
+向导的「保存并测试输出」使用当前表单设置提交测试任务，并打开最近任务。
+用 Ctrl+1/2/3（macOS 为 Cmd+1/2/3）切换三个页面，用 Page Up / Page Down 滚动内容。
 
 默认 PDF、文档目录中的 `Labelize`、102 × 152 mm、8 dpmm。
 每个任务在输出目录中创建 `时间_任务ID/`，里面是一份 PDF 或带页码的 PNG。
@@ -107,7 +109,9 @@ bash scripts/package-linux.sh   # Debian 12 x64 环境生成 DEB
 
 Windows 原生 MSVC 构建后，运行 `python scripts/collect-licenses.py` 和
 `makensis platform/windows/installer.nsi`。输出均在 `dist/`。
-交叉编译 `x86_64-pc-windows-gnu` 调试包需要 MinGW 的 `gcc` 和 `windres`，后者用于嵌入 Windows 应用清单。
+交叉编译 `x86_64-pc-windows-gnu` 调试包需要 MinGW 的 `gcc` 和 `windres`，后者用于嵌入应用图标和清单。
+修改 `platform/icon.svg` 后，可在配有 ImageMagick 的 macOS 上运行 `bash scripts/build-icons.sh`
+重新生成 GPUI、Windows 和 macOS 的图标文件。
 CI 为 Windows、两种 macOS 架构和 Debian 12 生成试用包；CI 配置本身不代表这些平台已经验收。
 当前实际执行记录在 [ACCEPTANCE.md](ACCEPTANCE.md)。
 

@@ -3,10 +3,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 [[ "$(uname -m)" == x86_64 ]] || { echo 'Build this amd64 package in an x86_64 environment.' >&2; exit 1; }
 profile="${1:-release}"
+binary_dir="${CARGO_TARGET_DIR:-target}/$profile"
 stage="dist/deb-$profile"
 mkdir -p "$stage/DEBIAN" "$stage/opt/labelize-printer/platform" "$stage/usr/share/applications" \
   "$stage/usr/share/icons/hicolor/scalable/apps" "$stage/usr/share/doc/labelize-printer"
-cp --reflink=never --sparse=never target/"$profile"/labelize-printer target/"$profile"/labelize-printer-daemon target/"$profile"/labelize-printer-ipp "$stage/opt/labelize-printer/"
+cp --reflink=never --sparse=never "$binary_dir/labelize-printer" "$binary_dir/labelize-printer-daemon" "$binary_dir/labelize-printer-ipp" "$stage/opt/labelize-printer/"
 strip --strip-unneeded "$stage/opt/labelize-printer/labelize-printer" \
   "$stage/opt/labelize-printer/labelize-printer-daemon" "$stage/opt/labelize-printer/labelize-printer-ipp"
 cp -R platform/linux "$stage/opt/labelize-printer/platform/"

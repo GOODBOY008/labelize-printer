@@ -3515,12 +3515,15 @@ dependencies = [
  "anyhow",
  "async-channel 2.5.0",
  "chrono",
+ "embed-resource",
  "gpui",
  "gpui-component",
  "labelize-printer-core",
  "log",
  "open",
+ "raw-window-handle",
  "serde_json",
+ "windows 0.61.3",
 ]
 
 [[package]]

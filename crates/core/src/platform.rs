@@ -94,9 +94,9 @@ pub fn diagnostics(paths: &AppPaths) -> PlatformStatus {
         .is_ok();
         status.autostart_installed = paths.root.join("autostart.enabled").exists();
         if status.windows_drivers.is_empty() {
-            status.notes.push(format!(
-                "Install the official ZDesigner ZPL driver: {DRIVER_URL}"
-            ));
+            status.notes.push(
+                "Install the official ZDesigner ZPL driver, then refresh printer detection.".into(),
+            );
         }
     }
     let _ = paths;

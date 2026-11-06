@@ -5,6 +5,7 @@
 <key>CFBundleName</key><string>Labelize Printer</string>
 <key>CFBundleDisplayName</key><string>Labelize Printer</string>
 <key>CFBundleExecutable</key><string>labelize-printer</string>
+<key>CFBundleIconFile</key><string>LabelizePrinter.icns</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.1.0</string>
 <key>CFBundleVersion</key><string>1</string>

@@ -11,6 +11,8 @@ Name "Labelize Printer"
 OutFile "${OUTPUT_FILE}"
 InstallDir "$LOCALAPPDATA\Programs\Labelize Printer"
 RequestExecutionLevel user
+!define MUI_ICON "labelize-printer.ico"
+!define MUI_UNICON "labelize-printer.ico"
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
@@ -44,6 +46,7 @@ Section "Labelize Printer"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LabelizePrinter" "DisplayName" "Labelize Printer"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LabelizePrinter" "DisplayVersion" "0.1.0"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LabelizePrinter" "DisplayIcon" '"$INSTDIR\labelize-printer.exe",0'
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LabelizePrinter" "UninstallString" '"$INSTDIR\Uninstall.exe"'
 SectionEnd
 Section "Uninstall"

@@ -1,33 +1,45 @@
-use std::{env, path::PathBuf, process::Command};
+use std::{env, fs, path::PathBuf};
 
 fn main() {
-    if cfg!(windows) || env::var("TARGET").as_deref() != Ok("x86_64-pc-windows-gnu") {
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
     }
 
-    // GPUI's manifest build runs only on Windows hosts. Link the same
-    // Common Controls v6 and DPI settings when cross-compiling with MinGW.
-    let gpui = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../vendor/gpui");
-    let resource = "resources/windows/gpui.rc";
-    println!("cargo:rerun-if-changed={}", gpui.join(resource).display());
-    println!(
-        "cargo:rerun-if-changed={}",
-        gpui.join("resources/windows/gpui.manifest.xml").display()
-    );
-    let object =
-        PathBuf::from(env::var_os("OUT_DIR").expect("Cargo sets OUT_DIR")).join("gpui-manifest.o");
-    let status = Command::new("x86_64-w64-mingw32-windres")
-        .current_dir(gpui)
-        .args(["-O", "coff", "-i", resource, "-o"])
-        .arg(&object)
-        .status()
-        .expect("MinGW windres is required to embed the GPUI Windows manifest");
-    assert!(
-        status.success(),
-        "Failed to compile the GPUI Windows manifest"
-    );
-    println!(
-        "cargo:rustc-link-arg-bin=labelize-printer={}",
-        object.display()
-    );
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let out = PathBuf::from(env::var_os("OUT_DIR").expect("Cargo sets OUT_DIR"));
+    let icon = root.join("platform/windows/labelize-printer.ico");
+    println!("cargo:rerun-if-changed={}", icon.display());
+    let resource = out.join("labelize-printer.rc");
+    let mut script = format!("1 ICON \"{}\"\n", icon.to_string_lossy().replace('\\', "/"));
+
+    // GPUI links this manifest itself on Windows hosts.
+    if !cfg!(windows) {
+        let manifest = root.join("vendor/gpui/resources/windows/gpui.manifest.xml");
+        println!("cargo:rerun-if-changed={}", manifest.display());
+        script.push_str(&format!("1 24 \"{}\"\n", manifest.display()));
+    }
+    fs::write(&resource, script).expect("Write the Windows resource script");
+
+    #[cfg(windows)]
+    embed_resource::compile_for(&resource, ["labelize-printer"], embed_resource::NONE)
+        .manifest_required()
+        .expect("Embed the Labelize Printer icon");
+
+    #[cfg(not(windows))]
+    {
+        assert_eq!(env::var("TARGET").as_deref(), Ok("x86_64-pc-windows-gnu"));
+        let object = out.join("labelize-printer-resources.o");
+        let status = std::process::Command::new("x86_64-w64-mingw32-windres")
+            .args(["-O", "coff", "-i"])
+            .arg(&resource)
+            .arg("-o")
+            .arg(&object)
+            .status()
+            .expect("MinGW windres is required to embed Windows resources");
+        assert!(status.success(), "Failed to compile Windows resources");
+        println!(
+            "cargo:rustc-link-arg-bin=labelize-printer={}",
+            object.display()
+        );
+    }
 }
