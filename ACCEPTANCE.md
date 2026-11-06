@@ -10,7 +10,7 @@
 | macOS Apple Silicon 程序和 PKG | 已构建 | 当前 macOS ARM 主机，应用 ad-hoc 签名，PKG 未签名/公证 |
 | macOS 原生系统打印 | 已通过 | “预览”的系统打印窗口可选 Labelize Printer；关闭 GPUI 后打印两份，后台保存一份两页 PDF |
 | macOS Intel 程序和 PKG | 已构建；后台测试通过 | x86_64 交叉编译，后台和原生 PAPPL 经 Rosetta 执行；尚未在 Intel 实机测试 GPUI |
-| Windows x64 程序和 NSIS EXE | 已构建 | GNU 目标交叉编译；尚未运行 Windows 11、NSIS 安装或真实 ZDesigner 驱动 |
+| Windows x64 程序和 NSIS EXE | UTM 试用通过 | Windows 11 Pro ARM64（Build 26200），x64 仿真。GPUI、安装/升级/卸载、登录启动及直接 RAW 输出已验证；ZDesigner 系统打印待验收 |
 | Debian 12 x64 程序、PAPPL 和 DEB | 已构建；后台及系统队列测试通过 | Debian 12 amd64 容器，实际安装 DEB → CUPS 的 PDF 栅格过滤 → PAPPL → 两页 PDF，移除队列和 DEB 成功 |
 | Ubuntu 24.04 | 待实机验收 | 提供同一 amd64 DEB；尚未验证安装依赖、登录服务与桌面打印 |
 | GPUI 输入、文件选择、缩放 | macOS 部分通过 | 中文路径粘贴、原生目录选择、设置保存、窗口缩放、任务列表和打开输出；中文输入法组合输入仍需验收 |
@@ -20,6 +20,23 @@
 当前包使用开发配置构建并去除 Windows/Linux 分发二进制的调试符号。
 `dist/` 下提供 ARM/Intel PKG、Windows EXE、Linux DEB；发布配置的构建流程在 CI 中。
 CI 尚未推送执行，Windows MSVC 构建也不在本次已验证结果内。
+
+## Windows UTM 验证
+
+- NSIS 交互安装和覆盖升级成功。修复了交叉编译包缺少 Common Controls v6 清单、
+  调试版依赖构建机着色器路径的问题。修复版在虚拟机的 800 × 600 桌面显示中文向导，
+  标题栏和导航可见，后台状态为运行中。
+- 使用安装包内的脚本注册当前用户登录任务。退出 Windows 后重新登录，未打开 GPUI 时
+  后台已监听本机 RAW 端口，命名管道可查询状态，升级前两条任务仍在。
+- 关闭 GPUI 后，将同一份两标签 ZPL 分包发到 RAW 端口。首标签 `^PQ2`，两个任务分别
+  保存为一份三页 PDF 和三张 PNG。前两页为 812 × 1218 像素，第三页为 600 × 400 像素，
+  对应 101.5 × 152.25 mm 和 75 × 50 mm。PNG 的 pHYs 均为 8000 像素/米。
+- NSIS 卸载后，应用文件、后台进程和登录任务已移除。重装并打开 GPUI 后，后台自行启动，
+  卸载前的四条任务和输出文件仍在。
+- 此虚拟机尚无 ZDesigner。临时通用队列的 RAW 提交在 `OpenPrinter` 返回无效打印机名称，
+  已清理测试队列及端口。系统打印窗口到 ZDesigner 的路径仍需在接受
+  [Zebra 许可协议](https://www.zebra.com/content/experience-fragments/zebra1/us/en/support/eula/end-user-license-agreement-unrestricted-software/master.html)
+  并安装驱动后验收。
 
 ## macOS 真实系统打印证据
 
@@ -62,9 +79,9 @@ CI 尚未推送执行，Windows MSVC 构建也不在本次已验证结果内。
 
 ## 完整验收仍需执行
 
-- Windows 11 x64：NSIS 安装/升级/卸载，官方 ZDesigner v10、ZD421 ZPL 203/300 dpi，
-  原生打印窗口可选、驱动正常关闭 RAW 连接、中文图形/条码/压缩图形、实际多标签多份数，
-  关闭 GPUI 后打印、Named Pipe 当前用户访问和登录计划任务。
+- Windows：在原生 Windows 11 x64 上复测安装及运行。安装官方 ZDesigner v10 后，
+  验证 ZD421 ZPL 203/300 dpi、系统打印窗口可选、驱动正常关闭 RAW 连接、中文图形/条码/压缩图形、
+  多标签多份数，以及关闭 GPUI 后从系统打印窗口提交任务。
 - macOS 13 Intel / Apple Silicon：PKG 安装、首次授权、LaunchAgent 下次登录、升级/卸载，
   真正的中文输入法组合输入和不同显示器缩放；当前主机并非 macOS 13。
 - Ubuntu 24.04 / Debian 12 桌面：DEB 安装/升级/卸载、X11/Wayland、Vulkan 驱动、

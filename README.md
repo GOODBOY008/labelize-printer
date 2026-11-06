@@ -107,6 +107,7 @@ bash scripts/package-linux.sh   # Debian 12 x64 环境生成 DEB
 
 Windows 原生 MSVC 构建后，运行 `python scripts/collect-licenses.py` 和
 `makensis platform/windows/installer.nsi`。输出均在 `dist/`。
+交叉编译 `x86_64-pc-windows-gnu` 调试包需要 MinGW 的 `gcc` 和 `windres`，后者用于嵌入 Windows 应用清单。
 CI 为 Windows、两种 macOS 架构和 Debian 12 生成试用包；CI 配置本身不代表这些平台已经验收。
 当前实际执行记录在 [ACCEPTANCE.md](ACCEPTANCE.md)。
 

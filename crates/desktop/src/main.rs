@@ -805,7 +805,17 @@ fn main() -> anyhow::Result<()> {
             }
         })
         .detach();
-        let bounds = Bounds::centered(None, size(px(1080.0), px(820.0)), cx);
+        let initial_size = size(px(1080.0), px(820.0));
+        #[cfg(windows)]
+        let initial_size = cx.primary_display().map_or(initial_size, |display| {
+            let screen = display.bounds().size;
+            // Leave room for the taskbar and window frame on small displays.
+            size(
+                initial_size.width.min(screen.width * 0.94),
+                initial_size.height.min(screen.height * 0.80),
+            )
+        });
+        let bounds = Bounds::centered(None, initial_size, cx);
         let main_window = cx
             .open_window(
                 WindowOptions {
@@ -814,7 +824,10 @@ fn main() -> anyhow::Result<()> {
                         title: Some("Labelize Printer".into()),
                         ..Default::default()
                     }),
-                    window_min_size: Some(size(px(800.0), px(600.0))),
+                    window_min_size: Some(size(
+                        initial_size.width.min(px(800.0)),
+                        initial_size.height.min(px(600.0)),
+                    )),
                     ..Default::default()
                 },
                 |window, cx| {
