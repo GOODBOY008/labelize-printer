@@ -3,10 +3,10 @@ Unicode True
 !include "LogicLib.nsh"
 Name "Labelize Printer"
 !ifndef BIN_DIR
-  !define BIN_DIR "../../target/release"
+  !define BIN_DIR "..\..\target\release"
 !endif
 !ifndef OUTPUT_FILE
-  !define OUTPUT_FILE "../../dist/LabelizePrinter-0.1.0-windows-x64.exe"
+  !define OUTPUT_FILE "..\..\dist\LabelizePrinter-0.1.0-windows-x64.exe"
 !endif
 OutFile "${OUTPUT_FILE}"
 InstallDir "$LOCALAPPDATA\Programs\Labelize Printer"
@@ -32,8 +32,8 @@ Section "Labelize Printer"
     Sleep 500
   ready:
   SetOutPath "$INSTDIR"
-  File "${BIN_DIR}/labelize-printer.exe"
-  File "${BIN_DIR}/labelize-printer-daemon.exe"
+  File "${BIN_DIR}\labelize-printer.exe"
+  File "${BIN_DIR}\labelize-printer-daemon.exe"
   File "..\..\LICENSE"
   File "..\..\THIRD_PARTY_NOTICES.md"
   File /r "..\..\licenses"
