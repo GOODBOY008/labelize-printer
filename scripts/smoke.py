@@ -46,10 +46,10 @@ def ipp(port, title, data, mime, copies=1, per_set=None):
 with tempfile.TemporaryDirectory(prefix='labelize-smoke-') as temporary:
     work = pathlib.Path(temporary).resolve()
     state = work / 'state'
-    log = open(work / 'daemon.log', 'w+')
+    log = open(work / 'daemon.log', 'w+', encoding='utf-8')
     daemon = subprocess.Popen([str(binary), '--data-dir', str(state), 'serve'], stdout=log, stderr=log)
     def cli(*command):
-        result = subprocess.run([str(binary), '--data-dir', str(state), *command], capture_output=True, text=True, timeout=360)
+        result = subprocess.run([str(binary), '--data-dir', str(state), *command], capture_output=True, encoding='utf-8', timeout=360)
         if result.returncode: raise RuntimeError(result.stderr)
         return json.loads(result.stdout)
     def status():
@@ -65,7 +65,7 @@ with tempfile.TemporaryDirectory(prefix='labelize-smoke-') as temporary:
         cli('settings', '--file', str(config))
         job = cli('test-print', '--wait')
         assert job['state'] == 'saved' and job['page_count'] == 1
-        assert pathlib.Path(job['output_files'][0]).is_file()
+        assert pathlib.Path(job['output_files'][0]).is_file(), job['output_files']
         print('PASS headless daemon ZPL -> PNG')
 
         raw = socket.create_connection(('127.0.0.1', settings['raw_port']))
@@ -181,11 +181,12 @@ with tempfile.TemporaryDirectory(prefix='labelize-smoke-') as temporary:
         second = subprocess.Popen([str(binary), '--data-dir', str(second_state), 'serve'], stdout=log, stderr=log)
         try:
             def second_status():
-                r = subprocess.run([str(binary), '--data-dir', str(second_state), 'status'], capture_output=True, text=True)
+                r = subprocess.run([str(binary), '--data-dir', str(second_state), 'status'], capture_output=True, encoding='utf-8')
                 return json.loads(r.stdout) if r.returncode == 0 else None
             second_info = eventually(second_status)
             assert second_info['settings']['raw_port'] != settings['raw_port']
-            assert second_info['settings']['ipp_port'] != settings['ipp_port']
+            if not args.skip_ipp:
+                assert second_info['settings']['ipp_port'] != settings['ipp_port']
             print('PASS first-run port conflicts select and persist distinct ports')
         finally:
             second.terminate(); second.wait(timeout=10)
