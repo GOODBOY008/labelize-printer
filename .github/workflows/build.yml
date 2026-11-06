@@ -1,68 +1,122 @@
 name: Build and package
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
+
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTUP_TOOLCHAIN: "1.99.1"
+
 jobs:
+  format:
+    name: Rust formatting
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rustfmt --no-self-update
+      - run: cargo fmt --all --check
+
   macos:
+    name: macOS ${{ matrix.arch }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [macos-14, macos-15-intel]
-    runs-on: ${{ matrix.os }}
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     env:
       MACOSX_DEPLOYMENT_TARGET: '13.0'
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --no-self-update
       - run: brew install pkg-config
       - run: bash scripts/build-openssl.sh
       - run: cargo build --workspace --release --locked
       - run: bash scripts/build-native.sh release
-      - run: cargo test -p labelize-printer-core --locked
+      - run: cargo test -p labelize-printer-core --release --locked
       - run: python3 scripts/smoke.py --profile release
       - run: python3 scripts/collect-licenses.py
       - run: bash scripts/package-macos.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: macos-${{ matrix.os }}
+          name: macos-${{ matrix.arch }}
           path: dist/*.pkg
+          if-no-files-found: error
+
   windows:
+    name: Windows x64
     runs-on: windows-2022
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal --no-self-update
       - run: cargo build --workspace --release --locked
-      - run: cargo test -p labelize-printer-core --locked
+      - run: cargo test -p labelize-printer-core --release --locked
       - run: python scripts/smoke.py --profile release --skip-ipp
       - run: python scripts/collect-licenses.py
-      - run: choco install nsis -y
-      - shell: pwsh
+      - name: Build NSIS installer
         run: |
-          New-Item -ItemType Directory -Force dist
-          & 'C:\Program Files (x86)\NSIS\makensis.exe' platform/windows/installer.nsi
+          $makensis = Join-Path ${env:ProgramFiles(x86)} 'NSIS\makensis.exe'
+          if (!(Test-Path -LiteralPath $makensis)) {
+            choco install nsis --no-progress -y
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          & $makensis platform/windows/installer.nsi
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-x64
           path: dist/*.exe
+          if-no-files-found: error
+
   linux:
+    name: Debian 12 x64
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - run: docker build -f scripts/linux.Dockerfile -t labelize-printer-build .
-      - run: |
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build Debian build image
+        run: docker build -f scripts/linux.Dockerfile -t labelize-printer-build .
+      - name: Build, test and package
+        run: |
           docker run --rm -v "$PWD:/build" labelize-printer-build bash -ec '
             cargo build --workspace --release --locked
             bash scripts/build-openssl.sh
             bash scripts/build-native.sh release
-            cargo test -p labelize-printer-core --locked
+            cargo test -p labelize-printer-core --release --locked
             python3 scripts/smoke.py --profile release
             python3 scripts/collect-licenses.py
             bash scripts/package-linux.sh
           '
-      - uses: actions/upload-artifact@v4
+      - name: Test installed DEB with CUPS
+        run: |
+          docker build -f scripts/linux-system.Dockerfile -t labelize-printer-system-test .
+          docker run --rm -v "$PWD:/build" labelize-printer-system-test bash scripts/linux-system-smoke.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-amd64
           path: dist/*.deb
+          if-no-files-found: error

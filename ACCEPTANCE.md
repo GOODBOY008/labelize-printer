@@ -17,9 +17,8 @@
 | Linux Wayland | 容器绘制通过；待桌面验收 | 嵌套 Weston + Mesa 软件 Vulkan 显示完整中文界面及任务结果；真实桌面、目录 portal 和输入法待验收 |
 | Linux X11 | 容器绘制通过；待桌面验收 | Xvfb + Openbox + Mesa 软件 Vulkan：首次打开即显示中文界面和任务；包含 GPUI RGB visual 补丁及应用启动时的 configure/restore 兼容处理 |
 
-当前包使用开发配置构建并去除 Windows/Linux 分发二进制的调试符号。
-`dist/` 下提供 ARM/Intel PKG、Windows EXE、Linux DEB；发布配置的构建流程在 CI 中。
-CI 尚未推送执行，Windows MSVC 构建也不在本次已验证结果内。
+上述本地试用包使用开发配置构建，并去除 Windows/Linux 分发二进制的调试符号。
+发布配置的构建、测试及试用包可查看 [GitHub Actions](https://github.com/GOODBOY008/labelize-printer/actions/workflows/build.yml)。
 
 ## 新版桌面界面复测
 

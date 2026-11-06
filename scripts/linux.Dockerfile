@@ -1,4 +1,4 @@
-FROM rust:1.99-bookworm
+FROM rust:1.99.1-bookworm
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential cmake pkg-config python3 curl clang libclang-dev \
     libssl-dev libfontconfig1-dev libfreetype-dev libx11-dev libxcb1-dev \
