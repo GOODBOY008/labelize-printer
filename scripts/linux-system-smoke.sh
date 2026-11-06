@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 [[ -f /.dockerenv ]]
-dpkg -i /build/dist/labelize-printer_0.1.0_amd64.deb
+version="$(python3 /build/scripts/package-version.py)"
+package="/build/dist/labelize-printer_${version}_amd64.deb"
+[[ "$(dpkg-deb --field "$package" Version)" == "$version" ]]
+dpkg -i "$package"
 mkdir -p /run/dbus
 [ -e /run/dbus/system_bus_socket ] || dbus-daemon --system --fork
 /usr/sbin/cupsd
 export LABELIZE_PRINTER_HOME=/tmp/labelize-system-smoke
 /opt/labelize-printer/labelize-printer-daemon serve >/build/.cache/linux-system-daemon.log 2>&1 &
-python3 - <<'PY'
-import json,pathlib,subprocess,time
+python3 - "$version" <<'PY'
+import json,pathlib,subprocess,sys,time
 cli='/opt/labelize-printer/labelize-printer-daemon'
 def call(*args):
     r=subprocess.run([cli,*args],text=True,capture_output=True,check=True)
@@ -17,6 +20,7 @@ for _ in range(150):
     try: s=call('status'); break
     except subprocess.CalledProcessError: time.sleep(.2)
 else: raise RuntimeError('Daemon unavailable')
+assert s['version'] == sys.argv[1], s['version']
 settings=s['settings'];settings.update(autostart=False,output_dir='/tmp/labelize-system-output',format='pdf')
 p=pathlib.Path('/tmp/labelize-settings.json');p.write_text(json.dumps(settings))
 call('settings','--file',str(p));call('install')

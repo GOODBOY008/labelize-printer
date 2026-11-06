@@ -22,7 +22,7 @@ Sign in to GitHub, open a successful run on the `main` branch, and download your
 
 See [ACCEPTANCE.md](ACCEPTANCE.md) for the test environments and outstanding checks.
 
-1. Extract the ZIP and install the package. On Linux, run `sudo apt install ./labelize-printer_0.1.0_amd64.deb` from the extraction directory.
+1. Extract the ZIP and install the package. On Linux, run `sudo apt install ./labelize-printer_*_amd64.deb` from the extraction directory.
 2. Open Labelize Printer, choose an output directory and format, and add the printer from the setup page.
 3. Select **Labelize Printer** in the system print dialog. Use the setup page's test output to verify file saving and open the result in Recent Jobs.
 

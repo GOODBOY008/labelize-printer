@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+version="$(python3 scripts/package-version.py)"
 profile="${1:-release}"
 stage="dist/macos-$profile"
 architecture="${2:-$(uname -m)}"
@@ -15,6 +16,7 @@ app="${LABELIZE_PRINTER_MACOS_STAGE:-$stage}/Labelize Printer.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/platform"
 cp "$binary_dir/labelize-printer" "$binary_dir/labelize-printer-daemon" "$binary_dir/labelize-printer-ipp" "$app/Contents/MacOS/"
 cp platform/macos/Info.plist "$app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $version" "$app/Contents/Info.plist"
 cp platform/macos/LabelizePrinter.icns "$app/Contents/Resources/"
 cp -R platform/macos "$app/Contents/Resources/platform/"
 cp LICENSE THIRD_PARTY_NOTICES.md "$app/Contents/Resources/"
@@ -28,5 +30,5 @@ for name in labelize-printer-ipp labelize-printer-daemon labelize-printer; do
 done
 codesign --force --sign - "$app"
 pkgbuild --component "$app" --install-location /Applications --identifier com.labelize.printer \
-  --version 0.1.0 "dist/LabelizePrinter-0.1.0-macos-$architecture-$profile.pkg"
+  --version "$version" "dist/LabelizePrinter-$version-macos-$architecture-$profile.pkg"
 echo 'Unsigned internal trial package. Open the app to finish per-user queue setup.'

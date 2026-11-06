@@ -2,6 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 [[ "$(uname -m)" == x86_64 ]] || { echo 'Build this amd64 package in an x86_64 environment.' >&2; exit 1; }
+version="$(python3 scripts/package-version.py)"
 profile="${1:-release}"
 binary_dir="${CARGO_TARGET_DIR:-target}/$profile"
 stage="dist/deb-$profile"
@@ -15,9 +16,9 @@ cp platform/linux/labelize-printer.desktop "$stage/usr/share/applications/"
 cp platform/icon.svg "$stage/usr/share/icons/hicolor/scalable/apps/labelize-printer.svg"
 cp LICENSE THIRD_PARTY_NOTICES.md "$stage/usr/share/doc/labelize-printer/"
 cp -R licenses "$stage/usr/share/doc/labelize-printer/"
-cat > "$stage/DEBIAN/control" <<'EOF'
+cat > "$stage/DEBIAN/control" <<EOF
 Package: labelize-printer
-Version: 0.1.0
+Version: $version
 Section: utils
 Priority: optional
 Architecture: amd64
@@ -28,4 +29,4 @@ Description: Local label virtual printer with a GPUI desktop interface
  Converts ZPL and system raster printing to PDF or PNG using a per-user daemon.
  Open Labelize Printer to register the local system queue after installation.
 EOF
-dpkg-deb --build --root-owner-group "$stage" "dist/labelize-printer_0.1.0_amd64.deb"
+dpkg-deb --build --root-owner-group "$stage" "dist/labelize-printer_${version}_amd64.deb"

@@ -112,8 +112,15 @@ bash scripts/package-macos.sh   # macOS 原生架构 PKG
 bash scripts/package-linux.sh   # Debian 12 x64 环境生成 DEB
 ```
 
-Windows 原生 MSVC 构建后，运行 `python scripts/collect-licenses.py` 和
-`makensis platform/windows/installer.nsi`。输出均在 `dist/`。
+Windows 原生 MSVC 构建后，在仓库根目录用 PowerShell 打包。输出位于 `dist/`。
+
+```powershell
+python scripts/collect-licenses.py
+New-Item -ItemType Directory -Force dist | Out-Null
+makensis "/DAPP_VERSION=$(python scripts/package-version.py)" platform\windows\installer.nsi
+```
+
+程序和安装包使用 `Cargo.toml` 的工作区版本。
 交叉编译 `x86_64-pc-windows-gnu` 调试包需要 MinGW 的 `gcc` 和 `windres`，后者用于嵌入应用图标和清单。
 修改 `platform/icon.svg` 后，可在配有 ImageMagick 的 macOS 上运行 `bash scripts/build-icons.sh`
 重新生成 GPUI、Windows 和 macOS 的图标文件。

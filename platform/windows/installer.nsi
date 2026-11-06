@@ -2,11 +2,14 @@ Unicode True
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
 Name "Labelize Printer"
+!ifndef APP_VERSION
+  !error "Pass APP_VERSION from scripts/package-version.py"
+!endif
 !ifndef BIN_DIR
   !define BIN_DIR "..\..\target\release"
 !endif
 !ifndef OUTPUT_FILE
-  !define OUTPUT_FILE "..\..\dist\LabelizePrinter-0.1.0-windows-x64.exe"
+  !define OUTPUT_FILE "..\..\dist\LabelizePrinter-${APP_VERSION}-windows-x64.exe"
 !endif
 OutFile "${OUTPUT_FILE}"
 InstallDir "$LOCALAPPDATA\Programs\Labelize Printer"
@@ -45,7 +48,7 @@ Section "Labelize Printer"
   CreateShortcut "$SMPROGRAMS\Labelize Printer.lnk" "$INSTDIR\labelize-printer.exe"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LabelizePrinter" "DisplayName" "Labelize Printer"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LabelizePrinter" "DisplayVersion" "0.1.0"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LabelizePrinter" "DisplayVersion" "${APP_VERSION}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LabelizePrinter" "DisplayIcon" '"$INSTDIR\labelize-printer.exe",0'
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LabelizePrinter" "UninstallString" '"$INSTDIR\Uninstall.exe"'
 SectionEnd
