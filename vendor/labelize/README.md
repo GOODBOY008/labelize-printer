@@ -1,0 +1,446 @@
+<div align="center">
+
+<img src="docs/logo-icon.svg" alt="Labelize logo" width="140"/>
+
+# Labelize
+
+**Parse and render ZPL / EPL / TSPL / CPCL / DPL labels to PNG & PDF — fast, offline, open source.**
+
+[![CI](https://img.shields.io/github/actions/workflow/status/GOODBOY008/labelize/ci.yml?branch=main&label=CI)](https://github.com/GOODBOY008/labelize/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/labelize)](https://crates.io/crates/labelize)
+[![npm](https://img.shields.io/npm/v/@goodboy008/labelize-wasm)](https://www.npmjs.com/package/@goodboy008/labelize-wasm)
+[![Docker](https://img.shields.io/github/actions/workflow/status/GOODBOY008/labelize/docker.yml?branch=main&label=docker)](https://github.com/GOODBOY008/labelize/actions/workflows/docker.yml)
+[![License](https://img.shields.io/github/license/GOODBOY008/labelize)](LICENSE)
+
+[🌐 Playground](https://labelize.764629910.workers.dev) · [📚 Documentation](https://labelize.764629910.workers.dev/#docs/getting-started) · [API console](https://labelize.764629910.workers.dev/#api) · [📜 Changelog](CHANGELOG.md) · [🚀 Releases](https://github.com/GOODBOY008/labelize/releases)
+
+<img src="docs/playground.png" alt="The Labelize web playground rendering a shipping label" width="860"/>
+
+</div>
+
+---
+
+Labelize is a Rust engine that parses **ZPL** (Zebra Programming Language), **EPL** (Eltron Programming Language), **TSPL/TSC**, and **CPCL** (Zebra mobile printers), and **DPL** (Datamax-O'Neil) label data and renders it to **PNG** or **PDF** — no printer hardware required. The same engine ships as a **CLI tool**, an **HTTP microservice**, a **WebAssembly package**, an **Android library**, and a plain **Rust crate**, sharing the same rendering engine across these surfaces. Match input bytes, dimensions and output options when comparing results.
+
+A free public playground is hosted on Cloudflare Workers at **<https://labelize.764629910.workers.dev>** — paste a label, see it render, download PNG or PDF. No install, no signup, no data leaving the browser tab beyond the render call.
+
+The **API** tab lets you test requests, inspect responses and copy cURL,
+JavaScript or Python examples. See the [public API guide](docs/API.md) for
+OpenAPI and scripts that convert a directory of labels through the API.
+
+## ✨ Why Labelize?
+
+Previewing thermal labels today usually means one of three compromises: send your label data to the [Labelary](http://labelary.com/) web API (third-party service, data-privacy concerns, ~400 ms per render), pay for a commercial SDK (often hundreds of dollars), or keep a physical printer around just to see what would print. Labelize is the self-hosted alternative:
+
+|  | **Labelize** | Labelary (web) | Zebra Printer |
+|---|---|---|---|
+| Offline / self-hosted | ✅ | ❌ | ✅ |
+| No hardware needed | ✅ | ✅ | ❌ |
+| Open source | ✅ | ❌ | ❌ |
+| EPL + TSPL + CPCL + DPL support | ✅ | ❌ | ✅ (EPL) |
+| PDF output | ✅ | ❌ | ❌ |
+| Embeddable library | ✅ | ❌ | ❌ |
+| REST API | ✅ | ✅ | ❌ |
+| Cost | Free | Free / paid tiers | Hardware cost |
+
+**Features at a glance**
+
+- 🖨️ **38+ ZPL commands** — text & fonts, 12 barcode symbologies (Code 128, EAN-13/8, UPC-A/E, Code 39, Interleaved 2-of-5, PDF417, Aztec, DataMatrix, QR, MaxiCode), boxes/circles/diagonals/ellipses, graphic fields, stored formats (`^DF`/`^XF`), label rotation & inversion
+- 🏷️ **EPL2 support** — text, the full 1D/2D barcode command set (`B`/`b`), lines, diagonals, boxes, binary graphics (`GW`)
+- 📱 **CPCL support** — Zebra mobile-printer sessions (`! 0 203 203 …`): resident fonts 0-7, `SETMAG`, justification, Code 128/39/EAN/UPC/I2of5, QR/PDF-417/MaxiCode/Aztec, `BOX`/`LINE`/`INVERSE-LINE`, counted `EG`/`CG` graphics
+- 🏭 **DPL support** — Datamax-O'Neil formats (`<STX>L … E`): bitmap fonts 0-8 + smooth font 9, bottom-left home coordinates, Code 128/39/UCC/EAN/UPC/I2of5, QR/PDF-417/DataMatrix/MaxiCode/Aztec, `X` line/box records
+- 🖼️ **PNG & PDF output** — black/white by default, optional grayscale. Opt-in [vector PDF and scalable PNG](docs/VECTOR_OUTPUT.md) share one layout and preserve searchable text
+- 🔄 **Reverse rendering (image → code)** — turn any raster (PNG/JPEG/GIF/BMP) into ZPL `^GFA` or TSPL `BITMAP` printer code; pixel-faithful, round-trip tested
+- 🔤 **Embedded fonts** — zero runtime font dependencies (Roboto Condensed, DejaVu Sans Mono, ZPL GS — all permissively licensed)
+- ⚡ **~5 ms per render** — no network, no interpreter, no printer
+- 🧪 **Golden-file E2E tests** against reference renders on every push, including eight image-to-code cases
+
+## 🚀 Quick Start
+
+Pick the surface that fits your stack — every path below produces the same pixels.
+
+### Command line (macOS · Linux · Windows)
+
+```bash
+# Homebrew (macOS / Linux)
+brew tap GOODBOY008/homebrew-labelize && brew install labelize
+
+# Or from source / crates.io (requires a Rust toolchain)
+cargo install labelize --features cli
+
+# Windows: download labelize-x86_64-pc-windows-msvc.zip from Releases
+```
+
+```bash
+labelize convert label.zpl                    # → label.png (format auto-detected)
+labelize convert label.epl -t pdf             # EPL in, PDF out
+labelize convert label.cpcl                    # CPCL in (Zebra mobile)
+labelize convert label.dpl                     # DPL in (Datamax)
+labelize convert label.zpl --width 100 --height 62 --dpmm 12
+
+# Reverse rendering: image → printer code (one pixel = one dot)
+labelize encode logo.png                       # → logo.zpl (ZPL ^GFA graphic field)
+labelize encode logo.png -l tspl               # TSPL SIZE + BITMAP output
+labelize encode logo.png --dpmm 12 --threshold 160
+```
+
+### Docker
+
+Pre-built multi-arch images (`linux/amd64` + `linux/arm64`) on every release:
+
+```bash
+docker run -p 8080:8080 goodboy008/labelize:latest   # or ghcr.io/goodboy008/labelize
+
+curl -X POST http://localhost:8080/convert \
+  -H "Content-Type: application/zpl" \
+  -d '^XA^FO50,50^A0N,40,40^FDHello Docker^FS^XZ' \
+  -o label.png
+
+# Reverse rendering: image in, ZPL out (add ?language=tspl for binary TSPL)
+curl -X POST "http://localhost:8080/encode?dpmm=8" \
+  -H "Content-Type: application/octet-stream" \
+  --data-binary @logo.png -o logo.zpl
+```
+
+Open `http://localhost:8080/` for the interactive playground. Tags: `latest`, `1.6.0` / `1.6` / `1`, `edge` (current `main`).
+
+#### Environment variables
+
+`serve` mode reads two optional flags; both default to `true`:
+
+| Variable | Effect when `false` |
+|----------|---------------------|
+| `LABELIZE_PLAYGROUND_ENABLED` | API-only container — `/` returns an endpoint listing instead of the web UI |
+| `LABELIZE_PLAYGROUND_LABELARY_COMPARE` | Hides the playground's "Compare with Labelary" button, which POSTs the current ZPL to the external `api.labelary.com` service |
+
+```bash
+# Privacy-sensitive deployment: keep label data in-house
+docker run -p 8080:8080 \
+  -e LABELIZE_PLAYGROUND_LABELARY_COMPARE=false \
+  goodboy008/labelize:latest
+```
+
+Rendering itself (`/convert`, the CLI, the library) never makes outbound requests.
+
+### JavaScript / TypeScript
+
+The engine compiled to WebAssembly — renders in browsers, Node.js, and bundlers with **no server**:
+
+```bash
+npm install @goodboy008/labelize-wasm
+```
+
+```js
+import { lz_render } from "@goodboy008/labelize-wasm/init";   // Node ≥ 20
+
+const zpl = Buffer.from("^XA^FO50,50^A0N,40,40^FDHello World^FS^XZ", "ascii");
+const png = lz_render(zpl, 102.0, 152.0, 8, false, false, false); // Uint8Array
+```
+
+Bundlers (webpack 5, Vite + `vite-plugin-wasm`) import from the package root instead. For TSPL/TSC input, use the language-explicit variant:
+
+```js
+import { lz_render_lang } from "@goodboy008/labelize-wasm/init";
+
+const tspl = Buffer.from('SIZE 101.6 mm,152.4 mm\nCLS\nTEXT 40,40,"4",0,1,1,"Hello World"\nPRINT 1', "ascii");
+const png = lz_render_lang(tspl, 101.6, 152.4, 8, false, false, "tspl");
+```
+
+Full API in the [JavaScript tutorial](docs/tutorials/javascript-wasm.md).
+
+### Android
+
+Self-contained AAR (`com.goodboy008.labelize`) with native libraries for `arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86` (minSdk 24) — bit-identical output to the desktop builds. Download `labelize-android-aar.zip` from [Releases](https://github.com/GOODBOY008/labelize/releases):
+
+```kotlin
+// app/build.gradle.kts
+repositories {
+    flatDir { dirs("libs") }
+}
+dependencies {
+    implementation(name = "labelize-android-release", ext = "aar")
+}
+
+// then, from Kotlin or Java:
+val png = Labelize.renderZplToPng(zpl.toByteArray(), widthMm = 102.0, heightMm = 152.0)
+```
+
+More in the [Android tutorial](docs/tutorials/android.md) and [`android/README.md`](android/README.md).
+
+### Rust
+
+```bash
+cargo add labelize
+```
+
+```rust
+use std::io::Cursor;
+use labelize::{ZplParser, Renderer, DrawerOptions};
+
+let mut parser = ZplParser::new();
+let labels = parser.parse(b"^XA^FO50,50^A0N,40,40^FDHello^FS^XZ")?;
+
+let mut buf = Cursor::new(Vec::new());
+Renderer::new().draw_label_as_png(&labels[0], &mut buf, DrawerOptions::default())?;
+std::fs::write("label.png", buf.into_inner())?;
+```
+
+Reverse rendering runs the other way — raster in, printer code out:
+
+```rust
+use labelize::{zpl_from_image_bytes, ReverseOptions};
+
+let options = ReverseOptions::default(); // dpmm: 8, threshold: 128
+let zpl = zpl_from_image_bytes(&png_bytes, &options)?; // or tspl_from_image_bytes
+std::fs::write("label.zpl", zpl)?;
+```
+
+Image encoding applies EXIF orientation and accepts up to 16 Mi pixels, 32000 dots per dimension and 128 MiB of decoded data. Large ZPL images are split into graphic fields within Zebra’s 99999-byte limit. Generated ZPL leaves the canvas size to the printer or render options; use image dimensions divided by `dpmm` in millimetres for an exact preview. TSPL declares its own size.
+
+The [reverse golden fixtures](testdata/reverse/README.md) include committed ZPL/TSPL snapshots, independently checked Labelary PNGs, and [visual comparisons](testdata/diffs/diff_report_reverse.txt). Both languages must reproduce the expected raster with zero pixel differences.
+
+A complete runnable example lives at [`examples/render_label.rs`](examples/render_label.rs)
+(`cargo run --example render_label -- label.zpl`), with a walkthrough in the
+[Rust tutorial](docs/tutorials/rust-library.md).
+
+## 🎨 Web Playground
+
+Every Labelize server serves an interactive UI at `GET /` — the same page running
+at the public instance:
+
+- Paste ZPL/EPL/TSPL/CPCL/DPL or open a `.zpl` / `.epl` / `.tspl` / `.cpcl` / `.dpl` file, pick a label size (4×6, 4×4, …)
+- **Image → Code** — turn a PNG/JPEG into ZPL printer code (loaded into the editor with a matching canvas) or download it as TSPL
+- **Live preview** with debounced auto-render, zoom fit / percent, dark & light themes, English / 简体中文
+- One-click **PNG / PDF download**, copy-PNG to clipboard, `Ctrl+S`
+- **Compare with Labelary** (ZPL) — fetches the reference render and scores the diff on the same scale as CI
+- Shareable permalinks that encode the label + settings in the URL hash
+
+```bash
+labelize serve --port 8080     # or: docker run -p 8080:8080 goodboy008/labelize
+```
+
+## 🖼️ Render Quality
+
+Labelize is calibrated against reference renderers with per-label pixel-diff
+tolerance thresholds — 151 real-world carrier and synthetic labels are compared
+on every push. ZPL/EPL labels are calibrated against Labelary (left = reference,
+right = Labelize); TSPL labels against the labelixa renderer with real-world
+captures (see [docs/TSPL_BASELINES.md](docs/TSPL_BASELINES.md)); CPCL labels
+against labelixa's CPCL renderer where it covers the commands, renderer
+baseline otherwise.
+
+| Label | Diff | Preview |
+|-------|------|---------|
+| amazon | 1.08% | <img src="testdata/diffs/amazon.png" height="140"> |
+| dhlpaket | 1.48% | <img src="testdata/diffs/dhlpaket.png" height="140"> |
+| ups | 2.98% | <img src="testdata/diffs/ups.png" height="140"> |
+| fedex | 4.85% | <img src="testdata/diffs/fedex.png" height="140"> |
+
+**151 labels tested** — 18 perfect · 63 good (<1%) · 62 minor (<5%) · 8 moderate (<15%) · 0 high
+
+All side-by-side images: [`testdata/diffs/`](testdata/diffs/) ·
+full reports: [labels](testdata/diffs/diff_report_labels.txt) · [unit](testdata/diffs/diff_report_unit.txt) ·
+thresholds: [`docs/DIFF_THRESHOLDS.md`](docs/DIFF_THRESHOLDS.md)
+
+## 📚 Documentation
+
+The [documentation index](docs/README.md) organizes platform tutorials, output
+options, architecture, testing and renderer references. Start with a tutorial:
+
+| Guide | For |
+|-------|-----|
+| [Command Line](docs/tutorials/cli.md) | Converting files from a shell |
+| [Docker](docs/tutorials/docker.md) | Running the service in a container |
+| [HTTP Service](docs/tutorials/http-service.md) | REST API & playground integration |
+| [JavaScript / WebAssembly](docs/tutorials/javascript-wasm.md) | Client-side rendering |
+| [Android](docs/tutorials/android.md) | Rendering inside an app |
+| [Rust Library](docs/tutorials/rust-library.md) | Embedding the engine in Rust |
+
+References: [Usage](docs/USAGE.md) · [Vector output](docs/VECTOR_OUTPUT.md) · [ZPL commands](docs/ZPL_COMMANDS_REFERENCE.md) · [Testing](docs/TESTING.md) · [Architecture](docs/ARCHITECTURE.md)
+
+## 📖 Reference
+
+<details>
+<summary><b>CLI reference</b></summary>
+
+```
+Usage: labelize <COMMAND>
+
+Commands:
+  convert  Convert a ZPL/EPL/TSPL/CPCL/DPL file to PNG or PDF
+  serve    Start HTTP server for label conversion
+
+Convert Options:
+  <INPUT>               Input file path (.zpl, .epl, .tspl, .cpcl, or .dpl)
+  -o, --output <PATH>   Output file path (default: input stem + .png/.pdf)
+  -f, --format <FMT>    Input format override: zpl | epl | tspl | cpcl | dpl
+  -t, --type <TYPE>     Output type: png | pdf [default: png]
+  --width <MM>          Label width in mm [default: 102; TSPL: from SIZE, CPCL: from PAGE-WIDTH]
+  --height <MM>         Label height in mm [default: 152; TSPL: from SIZE, CPCL: from header]
+  --dpmm <N>            Dots per mm: 6, 8, 12, or 24 [default: 8]
+  --antialias           8-bit grayscale output (default: 1-bit)
+
+Serve Options:
+  --host <HOST>         Bind address [default: 0.0.0.0]
+  -p, --port <PORT>     Listen port [default: 8080]
+```
+
+</details>
+
+<details>
+<summary><b>HTTP API</b></summary>
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/`       | GET  | Interactive web playground |
+| `/health` | GET  | Health check → `{"status":"ok"}` |
+| `/convert` | POST | Convert label data → PNG or PDF |
+
+**POST /convert** — the parser is selected by `Content-Type` (`application/zpl` / `application/epl` / `application/tspl` / `application/cpcl` / `application/dpl`); without one, the body is sniffed:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `width`   | 102     | Label width in mm |
+| `height`  | 152     | Label height in mm |
+| `dpmm`    | 8       | Dots per mm |
+| `output`  | png     | Output format: png/pdf |
+| `antialias` | false | Preserve antialiased greys instead of 1-bit |
+
+Status codes: `200` success (body is PNG/PDF bytes) · `400` parse error (bad label data) · `500` render error. The first label is rendered by default; `mode=vector&output=pdf&pages=all` combines all labels in one PDF.
+
+</details>
+
+<details>
+<summary><b>Supported commands</b></summary>
+
+### ZPL
+
+DataMatrix ECC 200 field-data escapes and firmware defaults are described in
+[DataMatrix field data](docs/DATAMATRIX.md#ecc-200-field-data).
+
+| Category | Commands |
+|----------|----------|
+| **Text & Font** | `^FO` `^FT` `^FD` `^FS` `^A` `^A@` (named font) `^CF` `^CW` (font identifier) `^FB` `^FR` `^FH` `^FN` `^FW` `^FV` |
+| **Barcodes** | `^BC` (Code 128) `^BE` (EAN-13) `^B8` (EAN-8) `^B9` (UPC-E) `^BU` (UPC-A) `^B2` (Interleaved 2-of-5) `^B3` (Code 39) `^B7` (PDF417) `^BO` (Aztec) `^BX` (DataMatrix) `^BQ` (QR Code) `^BD` (MaxiCode) `^BY` (defaults) |
+| **Graphics** | `^GB` (box) `^GC` (circle) `^GD` (diagonal) `^GE` (ellipse) `^GF` (graphic field) `^GS` (symbol) `~DG` (download graphic) `^IL` `^XG` `^ID` `^IM` `^IS` `~EG` |
+| **Label Control** | `^XA` `^XZ` `^PW` `^PO` `^PM` (persistent mirror image) `^LH` `^LR` `^LT` (label top) `^LS` (label shift) `^LL` (label length) `^CI` `^MU` (units) `^PQ` (print quantity) `^FX` (comment) `^SN`/`^SF` (serial state) |
+| **Stored Formats** | `^DF` `^XF` |
+
+DataMatrix rendering supports **ECC 000, 050, 080, 100, 140 and 200**. Omitted or empty ZPL
+`^BX` quality defaults to ECC 000, as specified by Zebra; use `^BXN,4,200`
+for modern ECC 200. The Legacy path supports six encodation formats,
+CRC, convolutional protection, randomization and square symbols up to 49 modules.
+Legacy ZPL preserves raw field bytes and `^FH` bytes, including stored-format
+recalls. Backslashes and pipes remain literal, matching the recorded CI13/CI27
+printer probes; control bytes can be supplied through `^FH`.
+Numeric records above 511 remain explicitly unsupported.
+They never silently become ECC 200. The raw Legacy encoder API accepts bytes.
+EPL DataMatrix continues to use ECC 200. See [Legacy scope and evidence](docs/DATAMATRIX.md#legacy-ecc-000-140)
+for the norm-based implementation, printer observations, limitations and source
+attribution. No independent overall validation is claimed.
+
+### EPL
+
+`N` (new label) · `A` (text) · `B` (1D barcodes — Code 128, Code 39, EAN-13/8, UPC-A/E, 2-of-5, Codabar, …) · `b` (2D: QR, DataMatrix, Aztec, PDF417, MaxiCode) · `LO`/`LW` (black/white line) · `LS` (diagonal) · `X` (box) · `GW` (graphic write) · `R` (reference point) · `P` (print)
+
+### TSPL / TSC
+
+| Category | Commands |
+|----------|----------|
+| **Setup** | `SIZE` (mm/dot/inch — sets the label canvas) · `DIRECTION` · `REFERENCE` · `SHIFT` · `CLS` · `GAP`/`DENSITY`/`SPEED`/`OFFSET`/`CODEPAGE` (accepted, no render effect) |
+| **Text** | `TEXT` (resident fonts 1–5, xmul/ymul magnification) |
+| **Barcodes** | `BARCODE` (Code 128/128M/EAN128/EAN128M, Code 39/39C, EAN-13, ITF14) · `QRCODE` (ECC defaults to M) · `PDF417` (raw `L<len>`, incl. compound option tokens) · `DMATRIX` |
+| **Graphics** | `BAR` · `BOX` · `CIRCLE` · `ELLIPSE` · `ERASE` · `REVERSE` (print-time region inversion) · `BITMAP` (binary cursor; modes 0/1/2 = overwrite/OR/XOR) |
+| **Output** | `PRINT` |
+
+Unsupported TSPL commands (`MPDF417`, `PUTPCX`, `PUTBMP`, …) fail loudly with an explicit error rather than rendering wrong output. TSPL calibration baselines and open questions: [docs/TSPL_BASELINES.md](docs/TSPL_BASELINES.md).
+
+### CPCL (Zebra mobile)
+
+`! {offset} {hdpi} {vdpi} {height} {qty}` sessions with `PRINT`/`END`/`ABORT`
+terminators. Resident fonts 0-7 (manual Appendix-D cell metrics) with `SETMAG`
+magnification, `SCALE-TEXT` point sizing with `ROTATE`, `ML` multiline blocks,
+`LEFT`/`CENTER`/`RIGHT` justification, Code 128 / UCCEAN128 / 39 (+C, full
+ASCII) / UPC-A / UPC-E / EAN-13 / EAN-8 / I2of5 (+C) with `BARCODE-TEXT` HRI,
+QR / PDF-417 / MaxiCode (mode 2 tags) / Aztec, `BOX`, `LINE`,
+`INVERSE-LINE`, and counted `EG`/`CG` graphics. Canvas comes from the header
+height and `PAGE-WIDTH`. Real-provenance corpus and reference-renderer
+details: [CPCL/DPL corpus](docs/TEST_CORPUS.md#cpcl-and-dpl).
+
+### DPL (Datamax-O'Neil)
+
+`<STX>L` … `E` label formats with 15-byte record headers (`{rotation}{type}
+{c}{d}{eee}{row}{col}…`). Bitmap fonts 0-8 (Table C-2 cells) with base-25
+multipliers, the smooth font 9 point table, scalable `S`/`U` IDs, Code 128 /
+39 (+HIBC) / UCC-EAN 128 / UPC-A/E / EAN-13/8 / I2of5 (+mod-10) with the
+uppercase-HRI convention, QR (auto + manual payload forms), PDF-417,
+DataMatrix, MaxiCode (fixed-field form), Aztec, and `X` line/box records.
+Positions use the bottom-left home in hundredths of an inch (`m` = metric);
+DPL declares no in-band label size, so the canvas comes from the caller.
+Real-provenance corpus (manual Appendix B samples) and reference-renderer
+details: [CPCL/DPL corpus](docs/TEST_CORPUS.md#cpcl-and-dpl).
+
+</details>
+
+<details>
+<summary><b>Architecture</b></summary>
+
+```
+  ZPL / EPL / TSPL / CPCL / DPL input
+       │
+       ▼
+  ┌─────────┐     ┌──────────┐     ┌─────────┐
+  │  Parser  │ ──▶ │ Renderer │ ──▶ │ Encoder │
+  └─────────┘     └──────────┘     └─────────┘
+       │                │                │
+   LabelInfo        RgbaImage       PNG / PDF
+```
+
+- **Parser** (`src/parsers/`) — tokenizes input, maintains `VirtualPrinter` state, produces typed `LabelElement`s
+- **Renderer** (`src/drawers/`) — rasterizes elements onto an `RgbaImage` canvas (text, graphics, barcodes, reverse print, label inversion)
+- **Encoder** (`src/images/`) — emits eight-bit grayscale PNG (black/white by default) or a raster PDF; the optional scene backend emits searchable vector/hybrid PDF and scaled PNG
+
+</details>
+
+## 🛠️ Development
+
+```bash
+cargo build --release                 # binary: target/release/labelize
+cargo test                            # all tests (124 golden E2E + unit)
+cargo test --test 'e2e_*'             # golden-file tests vs Labelary references
+cargo test --test 'unit_*'            # unit tests
+PATH="$PATH:target/debug" bash e2e/http/test_http.sh   # HTTP integration
+PATH="$PATH:target/debug" bash e2e/cli/test_cli.sh     # CLI integration
+```
+
+After any rendering change, regenerate and commit the diff artifacts
+(`cargo test --test e2e_diff_report -- --nocapture`) — CI enforces this via the
+golden-staleness check. See [AGENTS.md](AGENTS.md) for the full workflow.
+
+Building a Windows binary without a Windows toolchain:
+
+```bash
+tools/build/build-windows.sh   # → target/windows-release/labelize.exe (via Docker + mingw-w64)
+```
+
+## 💡 Use Cases
+
+- **Shipping label preview** — see exactly what prints before it hits the printer
+- **Warehouse management** — batch-convert label templates to PDF for archival
+- **E-commerce integrations** — generate label PNGs on the fly from a microservice
+- **Automated QA** — validate label content in CI/CD with golden-file tests
+- **Label design tools** — add real-time ZPL/TSPL/CPCL/DPL preview with the library or wasm API
+
+## 🤝 Contributing
+
+Contributions are welcome! Bug reports, new ZPL/EPL/TSPL/CPCL/DPL commands, rendering
+improvements, and docs fixes all count — see [AGENTS.md](AGENTS.md) for the
+development workflow, then open an issue or submit a pull request.
+
+## 📄 License
+
+[MIT AND BSD-3-Clause](LICENSE) — see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for embedded assets.
+
+---
+
+<sub>Looking for a <b>ZPL renderer</b>, <b>ZPL to PNG converter</b>, <b>ZPL to PDF</b>, <b>EPL parser</b>, <b>TSPL renderer</b>, <b>TSC label preview</b>, <b>CPCL converter</b>, <b>DPL preview</b>, <b>Zebra label preview</b>, <b>thermal label rendering</b>, or a <b>Labelary alternative</b>? Labelize covers all of these.</sub>

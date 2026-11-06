@@ -1,0 +1,1290 @@
+//! TSPL/TSC frontend: compiles TSPL commands into the shared IR.
+//!
+//! TSPL is a line-command language like EPL, with two raw-data commands
+//! (`BITMAP` and `PDF417 …,L<len>`) whose payloads are consumed by byte
+//! cursor rather than parsed as lines. BITMAP also accepts a complete line
+//! of hex text as a compatibility extension (see [`bitmap_hex_payload_end`]).
+//! State is minimal: label reference /
+//! shift offsets, the inverted flag from `DIRECTION`, and the physical
+//! label size from `SIZE` (carried on `LabelInfo::label_*_mm` — entry
+//! points fall back to it behind explicit user overrides).
+//!
+//! Semantics follow #13 (littlecxm's TSPL implementation) with the open
+//! questions listed in the PR description; unknown or ambiguous syntax
+/// errors out instead of silently misrendering.
+use crate::elements::barcode_128::{Barcode128, Barcode128WithData, BarcodeMode};
+use crate::elements::barcode_2of5::{Barcode2of5, Barcode2of5WithData};
+use crate::elements::barcode_39::{Barcode39, Barcode39WithData};
+use crate::elements::barcode_datamatrix::{
+    BarcodeDatamatrix, BarcodeDatamatrixWithData, DatamatrixRatio,
+};
+use crate::elements::barcode_ean13::{BarcodeEan13, BarcodeEan13WithData};
+use crate::elements::barcode_pdf417::{BarcodePdf417, BarcodePdf417WithData};
+use crate::elements::barcode_qr::{BarcodeQr, BarcodeQrWithData, QrErrorCorrectionLevel};
+use crate::elements::field_alignment::FieldAlignment;
+use crate::elements::field_orientation::FieldOrientation;
+use crate::elements::font::FontInfo;
+use crate::elements::graphic_box::GraphicBox;
+use crate::elements::graphic_circle::GraphicCircle;
+use crate::elements::graphic_ellipse::GraphicEllipse;
+use crate::elements::graphic_field::{GraphicField, GraphicFieldFormat, GraphicFieldMode};
+use crate::elements::invert_region::InvertRegion;
+use crate::elements::label_element::LabelElement;
+use crate::elements::label_info::LabelInfo;
+use crate::elements::label_position::LabelPosition;
+use crate::elements::line_color::LineColor;
+use crate::elements::reverse_print::ReversePrint;
+use crate::elements::text_field::TextField;
+
+pub struct TsplParser {
+    dpmm: i32,
+}
+
+impl Default for TsplParser {
+    fn default() -> Self {
+        Self { dpmm: 8 }
+    }
+}
+
+impl TsplParser {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Printer resolution for `SIZE` dot-dimension conversion (TSPL is
+    /// dot-native; the default 8 dpmm matches the render options default).
+    pub fn with_dpmm(dpmm: i32) -> Self {
+        Self { dpmm: dpmm.max(1) }
+    }
+
+    /// Parse TSPL data into one [`LabelInfo`] per `PRINT` block. Per-label
+    /// physical dimensions from `SIZE` land on `LabelInfo::label_width_mm` /
+    /// `label_height_mm`.
+    pub fn parse(&self, tspl_data: &[u8]) -> Result<Vec<LabelInfo>, String> {
+        let commands = split_tspl_commands(tspl_data)?;
+        let mut state = TsplState::new();
+        let mut labels = Vec::new();
+
+        for command in commands {
+            match command {
+                TsplCommand::Line(line) => self.parse_line(&line, &mut state, &mut labels)?,
+                TsplCommand::Bitmap { header, data } => {
+                    self.parse_bitmap(&header, data, &mut state)?
+                }
+                TsplCommand::Pdf417 { header, data } => {
+                    parse_pdf417_raw(&header, &data, &mut state)?
+                }
+            }
+        }
+
+        if !state.elements.is_empty() {
+            labels.push(state.to_label());
+        }
+
+        Ok(labels)
+    }
+
+    fn parse_line(
+        &self,
+        line: &str,
+        state: &mut TsplState,
+        labels: &mut Vec<LabelInfo>,
+    ) -> Result<(), String> {
+        let line = line.trim();
+        if line.is_empty() {
+            return Ok(());
+        }
+
+        let name = command_name(line);
+        match name.as_str() {
+            "SIZE" => parse_size(line, state, self.dpmm),
+            "DIRECTION" => parse_direction(line, state),
+            "REFERENCE" => parse_reference(line, state),
+            "SHIFT" => parse_shift(line, state),
+            "CLS" => {
+                state.elements.clear();
+                Ok(())
+            }
+            "PRINT" => {
+                if !state.elements.is_empty() {
+                    labels.push(state.to_label());
+                    state.elements.clear();
+                }
+                Ok(())
+            }
+            "TEXT" => parse_text(line, state),
+            "BAR" => parse_bar(line, state),
+            "BOX" => parse_box(line, state),
+            "CIRCLE" => parse_circle(line, state),
+            "ELLIPSE" => parse_ellipse(line, state),
+            "ERASE" => parse_region_box(line, state, LineColor::White, false),
+            "REVERSE" => parse_reverse_region(line, state),
+            "BARCODE" => parse_barcode(line, state),
+            "QRCODE" => parse_qrcode(line, state),
+            "PDF417" => parse_pdf417(line, state),
+            "DMATRIX" => parse_dmatrix(line, state),
+            "MPDF417" | "PUTPCX" | "PUTBMP" | "AZTEC" => {
+                Err(format!("unsupported TSPL command {}", name))
+            }
+            _ if is_device_noop(&name) => Ok(()),
+            _ => Ok(()),
+        }
+    }
+
+    fn parse_bitmap(
+        &self,
+        header: &str,
+        data: Vec<u8>,
+        state: &mut TsplState,
+    ) -> Result<(), String> {
+        let args = command_args(header, "BITMAP");
+        if args.len() < 5 {
+            return Err(format!(
+                "TSPL BITMAP command requires at least 5 parameters, got {}",
+                args.len()
+            ));
+        }
+
+        let x = parse_i32_arg(&args[0]).unwrap_or(0);
+        let y = parse_i32_arg(&args[1]).unwrap_or(0);
+        let row_bytes = parse_i32_arg(&args[2]).unwrap_or(1).max(1);
+        let height = parse_i32_arg(&args[3]).unwrap_or(1).max(1);
+        // Mode: 0 overwrite, 1 OR, 2 XOR.
+        let mode = match parse_i32_arg(&args[4]).unwrap_or(0) {
+            1 => GraphicFieldMode::Or,
+            2 => GraphicFieldMode::Xor,
+            _ => GraphicFieldMode::Overwrite,
+        };
+        let total_bytes = row_bytes * height;
+
+        state
+            .elements
+            .push(LabelElement::GraphicField(GraphicField {
+                reverse_print: ReversePrint::default(),
+                position: state.position(x, y),
+                format: GraphicFieldFormat::Raw,
+                data_bytes: total_bytes,
+                total_bytes,
+                row_bytes,
+                data,
+                magnification_x: 1,
+                magnification_y: 1,
+                mode,
+                // TSC BITMAP prints cleared bits — the inverse of ^GF/GW.
+                zero_bits_black: true,
+            }));
+        Ok(())
+    }
+}
+
+struct TsplState {
+    elements: Vec<LabelElement>,
+    reference_x: i32,
+    reference_y: i32,
+    shift_x: i32,
+    shift_y: i32,
+    label_width_mm: Option<f64>,
+    label_height_mm: Option<f64>,
+    inverted: bool,
+}
+
+impl TsplState {
+    fn new() -> Self {
+        Self {
+            elements: Vec::new(),
+            reference_x: 0,
+            reference_y: 0,
+            shift_x: 0,
+            shift_y: 0,
+            label_width_mm: None,
+            label_height_mm: None,
+            inverted: false,
+        }
+    }
+
+    fn position(&self, x: i32, y: i32) -> LabelPosition {
+        LabelPosition {
+            x: x + self.reference_x + self.shift_x,
+            y: y + self.reference_y + self.shift_y,
+            calculate_from_bottom: false,
+            automatic_position: false,
+            from_bottom: false,
+        }
+    }
+
+    fn to_label(&self) -> LabelInfo {
+        LabelInfo {
+            mirrored: false,
+            print_width: 0,
+            inverted: self.inverted,
+            label_width_mm: self.label_width_mm,
+            label_height_mm: self.label_height_mm,
+            elements: self.elements.clone(),
+        }
+    }
+}
+
+enum TsplCommand {
+    Line(String),
+    Bitmap { header: String, data: Vec<u8> },
+    Pdf417 { header: String, data: Vec<u8> },
+}
+
+fn split_tspl_commands(data: &[u8]) -> Result<Vec<TsplCommand>, String> {
+    let mut commands = Vec::new();
+    let mut idx = 0usize;
+
+    while idx < data.len() {
+        while idx < data.len() && matches!(data[idx], b'\r' | b'\n') {
+            idx += 1;
+        }
+        if idx >= data.len() {
+            break;
+        }
+
+        let line_start = idx;
+        let token_end = first_token_end(data, line_start);
+        let token = String::from_utf8_lossy(&data[line_start..token_end]).to_uppercase();
+
+        if token == "BITMAP" {
+            let payload_start = bitmap_payload_start(data, line_start)
+                .ok_or_else(|| "TSPL BITMAP command missing bitmap data separator".to_string())?;
+            let header = String::from_utf8_lossy(&data[line_start..payload_start]).to_string();
+            let args = command_args(&header, "BITMAP");
+            if args.len() < 4 {
+                return Err(format!(
+                    "TSPL BITMAP command requires at least 4 size parameters, got {}",
+                    args.len()
+                ));
+            }
+            let row_bytes = parse_i32_arg(&args[2]).unwrap_or(1).max(1) as usize;
+            let height = parse_i32_arg(&args[3]).unwrap_or(1).max(1) as usize;
+            let data_len = row_bytes * height;
+            let (payload_end, payload) =
+                if let Some(end) = bitmap_hex_payload_end(data, payload_start, data_len) {
+                    let mut decoded = Vec::with_capacity(data_len);
+                    let mut digits = data[payload_start..end]
+                        .iter()
+                        .filter(|b| b.is_ascii_hexdigit())
+                        .map(|&b| {
+                            if b.is_ascii_digit() {
+                                b - b'0'
+                            } else {
+                                b.to_ascii_lowercase() - b'a' + 10
+                            }
+                        });
+                    while let (Some(hi), Some(lo)) = (digits.next(), digits.next()) {
+                        decoded.push((hi << 4) | lo);
+                    }
+                    (end, decoded)
+                } else {
+                    let end = payload_start.saturating_add(data_len).min(data.len());
+                    (end, data[payload_start..end].to_vec())
+                };
+            commands.push(TsplCommand::Bitmap {
+                header,
+                data: payload,
+            });
+            idx = payload_end;
+            while idx < data.len() && matches!(data[idx], b'\r' | b'\n') {
+                idx += 1;
+            }
+            continue;
+        }
+
+        // PDF417/MPDF417 with an `L<len>` option: the expression is the next
+        // <len> raw bytes (which may span lines), so it must be consumed here
+        // like BITMAP data instead of being re-parsed as commands.
+        if matches!(token.as_str(), "PDF417" | "MPDF417") {
+            if let Some((len, header_end, content_start)) = pdf417_raw_layout(data, line_start) {
+                let header = String::from_utf8_lossy(&data[line_start..header_end]).to_string();
+                let content_end = raw_content_end(
+                    data,
+                    content_start,
+                    len.min(data.len().saturating_sub(content_start)),
+                );
+                commands.push(TsplCommand::Pdf417 {
+                    header,
+                    data: data[content_start..content_end].to_vec(),
+                });
+                idx = content_end;
+                continue;
+            }
+        }
+
+        idx = command_line_end(data, line_start);
+        let line = String::from_utf8_lossy(&data[line_start..idx]).to_string();
+        commands.push(TsplCommand::Line(line));
+    }
+
+    Ok(commands)
+}
+
+pub(super) fn first_token_end(data: &[u8], start: usize) -> usize {
+    let mut idx = start;
+    while idx < data.len() && !data[idx].is_ascii_whitespace() {
+        idx += 1;
+    }
+    idx
+}
+
+pub(super) fn bitmap_payload_start(data: &[u8], start: usize) -> Option<usize> {
+    let mut commas = 0usize;
+    let mut idx = start;
+    while idx < data.len() {
+        if data[idx] == b',' {
+            commas += 1;
+            if commas == 5 {
+                return Some(idx + 1);
+            }
+        }
+        if matches!(data[idx], b'\r' | b'\n') {
+            return None;
+        }
+        idx += 1;
+    }
+    None
+}
+
+/// Recognize the hex-text compatibility form only when the entire payload
+/// line has exactly two hex digits per declared byte (spaces/tabs allowed).
+/// A raw bitmap can itself consist of ASCII hex digits or contain CR/LF:
+/// short, odd, overlong or mixed runs must retain the binary byte cursor.
+/// In particular, never pad/truncate an apparent hex line or accept a hex
+/// prefix followed by another command. The formatter shares this boundary
+/// check without allocating a decoded bitmap just to preserve source bytes.
+pub(super) fn bitmap_hex_payload_end(
+    data: &[u8],
+    start: usize,
+    expected_bytes: usize,
+) -> Option<usize> {
+    let expected_digits = expected_bytes.checked_mul(2)?;
+    if expected_digits == 0 || data.len().saturating_sub(start) < expected_digits {
+        return None;
+    }
+    let mut digits = 0;
+    let mut end = start;
+    while end < data.len() && !matches!(data[end], b'\r' | b'\n') {
+        match data[end] {
+            b'0'..=b'9' | b'A'..=b'F' | b'a'..=b'f' => {
+                digits += 1;
+                if digits > expected_digits {
+                    return None;
+                }
+            }
+            b' ' | b'\t' => {}
+            _ => return None,
+        }
+        end += 1;
+    }
+    (digits == expected_digits).then_some(end)
+}
+
+pub(super) fn command_line_end(data: &[u8], start: usize) -> usize {
+    let mut idx = start;
+    let mut in_quotes = false;
+
+    while idx < data.len() {
+        if data[idx] == b'"' && !is_escaped_quote_byte(data, idx) {
+            in_quotes = !in_quotes;
+        } else if matches!(data[idx], b'\r' | b'\n') && !in_quotes {
+            break;
+        }
+        idx += 1;
+    }
+
+    idx
+}
+
+fn is_escaped_quote_byte(data: &[u8], idx: usize) -> bool {
+    idx > 0 && data[idx - 1] == b'\\'
+        || idx >= 2
+            && data[idx - 2] == b'\\'
+            && data[idx - 1] == b'['
+            && data.get(idx + 1) == Some(&b']')
+}
+
+fn command_name(line: &str) -> String {
+    line.split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_ascii_uppercase()
+}
+
+pub(super) fn command_args(line: &str, name: &str) -> Vec<String> {
+    let rest = line.get(name.len()..).unwrap_or("").trim_start();
+    split_tspl_args(rest)
+}
+
+fn split_tspl_args(input: &str) -> Vec<String> {
+    let chars: Vec<char> = input.chars().collect();
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut i = 0usize;
+
+    while i < chars.len() {
+        let ch = chars[i];
+        let escaped_quote = ch == '"'
+            && (i > 0 && chars[i - 1] == '\\'
+                || i >= 2
+                    && chars[i - 2] == '\\'
+                    && chars[i - 1] == '['
+                    && chars.get(i + 1) == Some(&']'));
+
+        if ch == '"' && !escaped_quote {
+            in_quotes = !in_quotes;
+            current.push(ch);
+        } else if ch == ',' && !in_quotes {
+            args.push(clean_arg(&current));
+            current.clear();
+        } else {
+            current.push(ch);
+        }
+        i += 1;
+    }
+
+    if !current.is_empty() || input.ends_with(',') {
+        args.push(clean_arg(&current));
+    }
+
+    args
+}
+
+fn clean_arg(arg: &str) -> String {
+    let trimmed = arg.trim();
+    let unquoted = if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    };
+    unquoted.replace("\\[\"]", "\"").replace("\\\"", "\"")
+}
+
+pub(super) fn parse_i32_arg(arg: &str) -> Option<i32> {
+    arg.trim().parse::<f64>().ok().map(|v| v.round() as i32)
+}
+
+fn parse_f64_arg(arg: &str) -> Option<f64> {
+    arg.trim().parse::<f64>().ok()
+}
+
+fn parse_size(line: &str, state: &mut TsplState, dpmm: i32) -> Result<(), String> {
+    let args = command_args(line, "SIZE");
+    if args.is_empty() {
+        return Err("TSPL SIZE command requires at least a width".to_string());
+    }
+    if let Some(width) = parse_dimension_mm(&args[0], dpmm) {
+        state.label_width_mm = Some(width);
+    }
+    if let Some(height_arg) = args.get(1) {
+        if let Some(height) = parse_dimension_mm(height_arg, dpmm) {
+            state.label_height_mm = Some(height);
+        }
+    }
+    Ok(())
+}
+
+/// `SIZE` dimensions are annotated (`100 mm`, `812 dot`, bare = inches per
+/// TSC); convert to millimeters at `dpmm`.
+fn parse_dimension_mm(arg: &str, dpmm: i32) -> Option<f64> {
+    let value_text: String = arg
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.' || *c == '-')
+        .collect();
+    let value = parse_f64_arg(&value_text)?;
+    let lower = arg.trim().to_ascii_lowercase();
+    if lower.ends_with("mm") {
+        Some(value)
+    } else if lower.ends_with("dot") || lower.ends_with("dots") {
+        Some(value / dpmm.max(1) as f64)
+    } else {
+        Some(value * 25.4)
+    }
+}
+
+fn parse_direction(line: &str, state: &mut TsplState) -> Result<(), String> {
+    let args = command_args(line, "DIRECTION");
+    if let Some(v) = args.first().and_then(|arg| parse_i32_arg(arg)) {
+        state.inverted = v == 0;
+    }
+    Ok(())
+}
+
+fn parse_reference(line: &str, state: &mut TsplState) -> Result<(), String> {
+    let args = command_args(line, "REFERENCE");
+    if let Some(v) = args.first().and_then(|arg| parse_i32_arg(arg)) {
+        state.reference_x = v;
+    }
+    if let Some(v) = args.get(1).and_then(|arg| parse_i32_arg(arg)) {
+        state.reference_y = v;
+    }
+    Ok(())
+}
+
+fn parse_shift(line: &str, state: &mut TsplState) -> Result<(), String> {
+    let args = command_args(line, "SHIFT");
+    match args.as_slice() {
+        [y] => {
+            state.shift_y = parse_i32_arg(y).unwrap_or(0);
+        }
+        [x, y, ..] => {
+            state.shift_x = parse_i32_arg(x).unwrap_or(0);
+            state.shift_y = parse_i32_arg(y).unwrap_or(0);
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn parse_text(line: &str, state: &mut TsplState) -> Result<(), String> {
+    let args = command_args(line, "TEXT");
+    if args.len() < 7 {
+        return Err(format!(
+            "TSPL TEXT command requires at least 7 parameters, got {}",
+            args.len()
+        ));
+    }
+
+    let x = parse_i32_arg(&args[0]).unwrap_or(0);
+    let y = parse_i32_arg(&args[1]).unwrap_or(0);
+    let font_id = args[2].clone();
+    let orientation = tspl_rotation(&args[3]);
+    let x_mult = parse_i32_arg(&args[4]).unwrap_or(1).clamp(1, 10);
+    let y_mult = parse_i32_arg(&args[5]).unwrap_or(1).clamp(1, 10);
+    let (alignment, content_idx) = if args.len() >= 8 {
+        (tspl_alignment(&args[6]), 7usize)
+    } else {
+        (FieldAlignment::Left, 6usize)
+    };
+    let text = args.get(content_idx).cloned().unwrap_or_default();
+    if text.is_empty() {
+        return Ok(());
+    }
+
+    let font = super::fonts::resident_font(&font_id);
+    state.elements.push(LabelElement::Text(TextField {
+        reverse_print: ReversePrint::default(),
+        font: FontInfo {
+            name: font_id,
+            face: font.face,
+            advance_mult: 1.0,
+            dedot_zero: false,
+            width: font.base_width * x_mult as f64,
+            height: font.base_height * y_mult as f64,
+            orientation,
+        },
+        position: state.position(x, y),
+        alignment,
+        text,
+        block: None,
+    }));
+    Ok(())
+}
+
+fn tspl_alignment(arg: &str) -> FieldAlignment {
+    match parse_i32_arg(arg).unwrap_or(0) {
+        2 => FieldAlignment::Center,
+        3 => FieldAlignment::Right,
+        _ => FieldAlignment::Left,
+    }
+}
+
+fn parse_bar(line: &str, state: &mut TsplState) -> Result<(), String> {
+    let args = command_args(line, "BAR");
+    if args.len() < 4 {
+        return Err(format!(
+            "TSPL BAR command requires 4 parameters, got {}",
+            args.len()
+        ));
+    }
+    let x = parse_i32_arg(&args[0]).unwrap_or(0);
+    let y = parse_i32_arg(&args[1]).unwrap_or(0);
+    let width = parse_i32_arg(&args[2]).unwrap_or(1).max(1);
+    let height = parse_i32_arg(&args[3]).unwrap_or(1).max(1);
+    state.elements.push(LabelElement::GraphicBox(filled_box(
+        state,
+        x,
+        y,
+        width,
+        height,
+        LineColor::Black,
+        false,
+    )));
+    Ok(())
+}
+
+fn parse_box(line: &str, state: &mut TsplState) -> Result<(), String> {
+    let args = command_args(line, "BOX");
+    if args.len() < 5 {
+        return Err(format!(
+            "TSPL BOX command requires at least 5 parameters, got {}",
+            args.len()
+        ));
+    }
+    let x = parse_i32_arg(&args[0]).unwrap_or(0);
+    let y = parse_i32_arg(&args[1]).unwrap_or(0);
+    let x_end = parse_i32_arg(&args[2]).unwrap_or(x);
+    let y_end = parse_i32_arg(&args[3]).unwrap_or(y);
+    let thickness = parse_i32_arg(&args[4]).unwrap_or(1).max(1);
+    // TSPL's corner radius is a dot radius; the IR's corner_rounding is the
+    // Zebra-style 1-8 fraction of half the shorter side. Convert, clamping
+    // like ^GB does.
+    let radius = args
+        .get(5)
+        .and_then(|arg| parse_i32_arg(arg))
+        .unwrap_or(0)
+        .max(0);
+    let width = (x_end - x).abs().max(thickness);
+    let height = (y_end - y).abs().max(thickness);
+    let corner_rounding = if radius > 0 {
+        ((radius as f64 * 16.0) / width.min(height) as f64).round() as i32
+    } else {
+        0
+    }
+    .clamp(0, 8);
+    state.elements.push(LabelElement::GraphicBox(GraphicBox {
+        reverse_print: ReversePrint::default(),
+        position: state.position(x, y),
+        width,
+        height,
+        border_thickness: thickness,
+        corner_rounding,
+        line_color: LineColor::Black,
+    }));
+    Ok(())
+}
+
+fn parse_circle(line: &str, state: &mut TsplState) -> Result<(), String> {
+    let args = command_args(line, "CIRCLE");
+    if args.len() < 4 {
+        return Err(format!(
+            "TSPL CIRCLE command requires 4 parameters, got {}",
+            args.len()
+        ));
+    }
+    let x = parse_i32_arg(&args[0]).unwrap_or(0);
+    let y = parse_i32_arg(&args[1]).unwrap_or(0);
+    let diameter = parse_i32_arg(&args[2]).unwrap_or(1).max(1);
+    let thickness = parse_i32_arg(&args[3]).unwrap_or(1).max(1);
+    state
+        .elements
+        .push(LabelElement::GraphicCircle(GraphicCircle {
+            reverse_print: ReversePrint::default(),
+            position: state.position(x, y),
+            circle_diameter: diameter,
+            border_thickness: thickness,
+            line_color: LineColor::Black,
+        }));
+    Ok(())
+}
+
+fn parse_ellipse(line: &str, state: &mut TsplState) -> Result<(), String> {
+    let args = command_args(line, "ELLIPSE");
+    if args.len() < 5 {
+        return Err(format!(
+            "TSPL ELLIPSE command requires 5 parameters, got {}",
+            args.len()
+        ));
+    }
+    let x = parse_i32_arg(&args[0]).unwrap_or(0);
+    let y = parse_i32_arg(&args[1]).unwrap_or(0);
+    let width = parse_i32_arg(&args[2]).unwrap_or(1).max(1);
+    let height = parse_i32_arg(&args[3]).unwrap_or(1).max(1);
+    let thickness = parse_i32_arg(&args[4]).unwrap_or(1).max(1);
+    state
+        .elements
+        .push(LabelElement::GraphicEllipse(GraphicEllipse {
+            reverse_print: ReversePrint::default(),
+            position: state.position(x, y),
+            width,
+            height,
+            border_thickness: thickness,
+            line_color: LineColor::Black,
+        }));
+    Ok(())
+}
+
+fn parse_region_box(
+    line: &str,
+    state: &mut TsplState,
+    color: LineColor,
+    reverse: bool,
+) -> Result<(), String> {
+    let name = command_name(line);
+    let args = command_args(line, &name);
+    if args.len() < 4 {
+        return Err(format!(
+            "TSPL {} command requires 4 parameters, got {}",
+            name,
+            args.len()
+        ));
+    }
+    let x = parse_i32_arg(&args[0]).unwrap_or(0);
+    let y = parse_i32_arg(&args[1]).unwrap_or(0);
+    let width = parse_i32_arg(&args[2]).unwrap_or(1).max(1);
+    let height = parse_i32_arg(&args[3]).unwrap_or(1).max(1);
+    state.elements.push(LabelElement::GraphicBox(filled_box(
+        state, x, y, width, height, color, reverse,
+    )));
+    Ok(())
+}
+
+/// `REVERSE x,y,width,height` — print-time region inversion (the TSPL
+/// manual documents white-on-black text in the area). Modeled as the neutral
+/// InvertRegion element the renderer applies after drawing.
+fn parse_reverse_region(line: &str, state: &mut TsplState) -> Result<(), String> {
+    let args = command_args(line, "REVERSE");
+    if args.len() < 4 {
+        return Err(format!(
+            "TSPL REVERSE command requires 4 parameters, got {}",
+            args.len()
+        ));
+    }
+    let x = parse_i32_arg(&args[0]).unwrap_or(0);
+    let y = parse_i32_arg(&args[1]).unwrap_or(0);
+    let width = parse_i32_arg(&args[2]).unwrap_or(1).max(1);
+    let height = parse_i32_arg(&args[3]).unwrap_or(1).max(1);
+    state
+        .elements
+        .push(LabelElement::InvertRegion(InvertRegion {
+            position: state.position(x, y),
+            width,
+            height,
+        }));
+    Ok(())
+}
+
+fn filled_box(
+    state: &TsplState,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    color: LineColor,
+    reverse: bool,
+) -> GraphicBox {
+    GraphicBox {
+        reverse_print: ReversePrint { value: reverse },
+        position: state.position(x, y),
+        width,
+        height,
+        border_thickness: width.min(height).max(1),
+        corner_rounding: 0,
+        line_color: color,
+    }
+}
+
+fn parse_barcode(line: &str, state: &mut TsplState) -> Result<(), String> {
+    let args = command_args(line, "BARCODE");
+    if args.len() < 9 {
+        return Err(format!(
+            "TSPL BARCODE command requires at least 9 parameters, got {}",
+            args.len()
+        ));
+    }
+    let x = parse_i32_arg(&args[0]).unwrap_or(0);
+    let y = parse_i32_arg(&args[1]).unwrap_or(0);
+    let code_type = args[2].trim().to_ascii_uppercase();
+    let height = parse_i32_arg(&args[3]).unwrap_or(1).max(1);
+    let human_readable = parse_i32_arg(&args[4]).unwrap_or(0);
+    let line = human_readable > 0;
+    // TSC BARCODE parameter 5: 1 = left, 2 = center, 3 = right (anything
+    // else centers, matching the reference renderer's default).
+    let line_alignment = match human_readable {
+        1 => FieldAlignment::Left,
+        3 => FieldAlignment::Right,
+        _ => FieldAlignment::Center,
+    };
+    let orientation = tspl_rotation(&args[5]);
+    let narrow = parse_i32_arg(&args[6]).unwrap_or(1).max(1);
+    let wide = parse_i32_arg(&args[7]).unwrap_or(narrow).max(narrow);
+    let content_idx = if args.len() >= 10 { 9 } else { 8 };
+    let data = args.get(content_idx).cloned().unwrap_or_default();
+    let position = state.position(x, y);
+    let width_ratio = (wide as f64 / narrow as f64).max(1.0);
+
+    let element = match code_type.as_str() {
+        "128" | "128M" => LabelElement::Barcode128(Barcode128WithData {
+            reverse_print: ReversePrint::default(),
+            barcode: Barcode128 {
+                orientation,
+                height,
+                line,
+                line_above: false,
+                check_digit: false,
+                mode: BarcodeMode::Automatic,
+            },
+            width: narrow,
+            position,
+            line_alignment,
+            data,
+        }),
+        "EAN128" | "EAN128M" => LabelElement::Barcode128(Barcode128WithData {
+            reverse_print: ReversePrint::default(),
+            barcode: Barcode128 {
+                orientation,
+                height,
+                line,
+                line_above: false,
+                check_digit: false,
+                mode: BarcodeMode::Ucc,
+            },
+            width: narrow,
+            position,
+            line_alignment,
+            data,
+        }),
+        "39" | "39C" => LabelElement::Barcode39(Barcode39WithData {
+            reverse_print: ReversePrint::default(),
+            barcode: Barcode39 {
+                orientation,
+                height,
+                line,
+                line_above: false,
+                check_digit: code_type == "39C",
+            },
+            width: narrow,
+            width_ratio,
+            position,
+            line_alignment,
+            data,
+        }),
+        "EAN13" => LabelElement::BarcodeEan13(BarcodeEan13WithData {
+            reverse_print: ReversePrint::default(),
+            barcode: BarcodeEan13 {
+                orientation,
+                height,
+                line,
+                line_above: false,
+            },
+            width: narrow,
+            position,
+            data,
+        }),
+        // ITF14 is Interleaved 2of5 carrying 14 digits including the check
+        // digit; drawn as plain I2of5 with a mandatory check digit (the
+        // TSC guard bars are not modeled).
+        "ITF14" => LabelElement::Barcode2of5(Barcode2of5WithData {
+            reverse_print: ReversePrint::default(),
+            barcode: Barcode2of5 {
+                orientation,
+                height,
+                line,
+                line_above: false,
+                check_digit: true,
+            },
+            width: narrow,
+            width_ratio,
+            position,
+            line_alignment,
+            data,
+        }),
+        _ => return Err(format!("unsupported TSPL barcode type {}", code_type)),
+    };
+
+    state.elements.push(element);
+    Ok(())
+}
+
+/// `DMATRIX x,y,width,height,[c#,x#,r#,a#,row,col,]"content"` — width/height
+/// are the expected symbol area and stay advisory: the manual's result
+/// figure prints the x-less example as an 18×18 symbol of ~72 dots inside a
+/// 400×400 request, so the symbol is never scaled to fill the area. `x#` is
+/// the module size in dots (default 4, from that same figure: 70 measured
+/// dots / 18 modules), `c#` the escape control character in decimal (only
+/// active when present), `r#` rotation, `a#` 0 square (default) / 1
+/// rectangle, and the bare numeric pair is the symbol size in the manual's
+/// row,col order. The content is passed through raw.
+fn parse_dmatrix(line: &str, state: &mut TsplState) -> Result<(), String> {
+    let args = command_args(line, "DMATRIX");
+    if args.len() < 5 {
+        return Err(format!(
+            "TSPL DMATRIX command requires at least 5 parameters, got {}",
+            args.len()
+        ));
+    }
+    let x = parse_i32_arg(&args[0]).unwrap_or(0);
+    let y = parse_i32_arg(&args[1]).unwrap_or(0);
+    let content = args.last().cloned().unwrap_or_default();
+    if content.is_empty() {
+        return Ok(());
+    }
+
+    let mut orientation = FieldOrientation::Normal;
+    // TSC default module size in dots (no stated default in the manual;
+    // 4 is calibrated from its example figure).
+    let mut module_size = 4i32;
+    let mut escape = 0u8;
+    let mut ratio = DatamatrixRatio::Square;
+    let mut rows = 0i32;
+    let mut columns = 0i32;
+    let mut size_pair: Vec<i32> = Vec::new();
+    for option in &args[4..args.len() - 1] {
+        let token = option.trim();
+        let Some(first) = token.chars().next() else {
+            continue;
+        };
+        match first {
+            'r' | 'R' => {
+                if let Ok(deg) = token[1..].parse::<i32>() {
+                    orientation = match deg {
+                        90 => FieldOrientation::Rotated90,
+                        180 => FieldOrientation::Rotated180,
+                        270 => FieldOrientation::Rotated270,
+                        _ => FieldOrientation::Normal,
+                    };
+                }
+            }
+            'c' | 'C' => {
+                if let Ok(code) = token[1..].parse::<u8>() {
+                    escape = code;
+                }
+            }
+            'a' | 'A' => {
+                if token[1..].trim() == "1" {
+                    ratio = DatamatrixRatio::Rectangular;
+                }
+            }
+            'x' | 'X' => {
+                if let Ok(n) = token[1..].parse::<i32>() {
+                    module_size = n;
+                }
+            }
+            digit if digit.is_ascii_digit() => {
+                if let Ok(n) = token.parse::<i32>() {
+                    size_pair.push(n);
+                }
+            }
+            _ => {}
+        }
+    }
+    if size_pair.len() >= 2 {
+        rows = size_pair[0];
+        columns = size_pair[1];
+    }
+
+    state
+        .elements
+        .push(LabelElement::BarcodeDatamatrix(BarcodeDatamatrixWithData {
+            reverse_print: ReversePrint::default(),
+            barcode: BarcodeDatamatrix {
+                orientation,
+                height: module_size.max(1),
+                quality: 200,
+                columns,
+                rows,
+                format: 6,
+                escape,
+                ratio: Some(ratio),
+            },
+            position: state.position(x, y),
+            data: content,
+            data_bytes: None,
+        }));
+    Ok(())
+}
+
+fn parse_qrcode(line: &str, state: &mut TsplState) -> Result<(), String> {
+    let args = command_args(line, "QRCODE");
+    if args.len() < 7 {
+        return Err(format!(
+            "TSPL QRCODE command requires at least 7 parameters, got {}",
+            args.len()
+        ));
+    }
+    let x = parse_i32_arg(&args[0]).unwrap_or(0);
+    let y = parse_i32_arg(&args[1]).unwrap_or(0);
+    // TSC QRCODE default error-correction level is M; unknown characters
+    // fall back to M as well (see apply path below).
+    let level = args[2].chars().next().unwrap_or('M').to_ascii_uppercase();
+    let magnification = parse_i32_arg(&args[3]).unwrap_or(1).clamp(1, 10);
+    // Input mode (A/N/M automatic-numeric-alphanumeric/B): the encoder
+    // selects compaction automatically, so the mode is accepted and unused.
+    let orientation = tspl_rotation(&args[5]);
+    let content = args.last().cloned().unwrap_or_default();
+    if content.is_empty() {
+        return Ok(());
+    }
+
+    state
+        .elements
+        .push(LabelElement::BarcodeQr(BarcodeQrWithData {
+            reverse_print: ReversePrint::default(),
+            barcode: BarcodeQr {
+                magnification,
+                orientation,
+            },
+            height: 0,
+            position: state.position(x, y),
+            data: content,
+            error_correction: match level {
+                'L' => QrErrorCorrectionLevel::L,
+                'Q' => QrErrorCorrectionLevel::Q,
+                'H' => QrErrorCorrectionLevel::H,
+                _ => QrErrorCorrectionLevel::M,
+            },
+        }));
+    Ok(())
+}
+
+/// Locate the `L<len>` option of a PDF417/MPDF417 command and return
+/// `(len, header_end, content_start)`. Option tokens are comma-separated and
+/// may continue onto following lines: a newline only continues the option
+/// list when the line ended with a trailing comma. Returns `None` when no
+/// length option is present, leaving the command to the line parser.
+pub(super) fn pdf417_raw_layout(data: &[u8], start: usize) -> Option<(usize, usize, usize)> {
+    let mut idx = start;
+    while idx < data.len() && !matches!(data[idx], b'\r' | b'\n') && data[idx] != b',' {
+        idx += 1;
+    }
+    let mut line_ends = false;
+    loop {
+        if idx >= data.len() {
+            return None;
+        }
+        // idx sits on a token start (or on a newline/comma straight after one).
+        let token_start = idx;
+        while idx < data.len() && data[idx] != b',' && !matches!(data[idx], b'\r' | b'\n') {
+            idx += 1;
+        }
+        let token = String::from_utf8_lossy(&data[token_start..idx])
+            .trim()
+            .to_ascii_uppercase();
+        let token_end = idx;
+        // The L<len> raw-data marker either is its own token or trails a
+        // compound option token (TSC's documented sample: `PDF417 …,E30R4C4L26`).
+        let raw_len = if token.len() > 1 && token.starts_with('L') {
+            token[1..].parse::<usize>().ok()
+        } else if let Some(lpos) = token.rfind('L') {
+            if lpos > 0 {
+                token[lpos + 1..].parse::<usize>().ok()
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        if let Some(len) = raw_len {
+            // Skip the comma that follows the length option.
+            let mut cursor = idx;
+            while cursor < data.len() && matches!(data[cursor], b'\r' | b'\n' | b',') {
+                cursor += 1;
+            }
+            return Some((len, token_end, cursor));
+        }
+        if idx >= data.len() {
+            return None;
+        }
+        if matches!(data[idx], b'\r' | b'\n') {
+            // Continuation is only valid straight after a trailing comma.
+            if line_ends || data[idx - 1] != b',' {
+                return None;
+            }
+            while idx < data.len() && matches!(data[idx], b'\r' | b'\n') {
+                idx += 1;
+            }
+            if idx >= data.len() {
+                return None;
+            }
+            line_ends = true;
+            continue;
+        }
+        // On a comma: next token starts after it; remember whether the
+        // preceding token boundary reached end-of-line (checked above).
+        line_ends = false;
+        idx += 1;
+        if idx >= data.len() {
+            return None;
+        }
+    }
+}
+
+/// End offset for a length-prefixed raw expression: `len` bytes, except that
+/// consumption stops at a line boundary when the swallowed tail begins with an
+/// unambiguous structural command (`PRINT`, `CLS`, `BITMAP`). TSC's own
+/// documentation sample miscounts the length (L297 over 287 bytes of content,
+/// exactly reaching the end of the following `PRINT 1,1`), and strict counting
+/// would swallow it; content lines that merely start with a command-like word
+/// ("Bar Height ...") must NOT truncate, so the structural set is deliberately
+/// narrow.
+pub(super) fn raw_content_end(data: &[u8], start: usize, len: usize) -> usize {
+    let end = start.saturating_add(len).min(data.len());
+    let mut idx = start;
+    while idx < end {
+        if data[idx] == b'\n' {
+            let mut next = idx + 1;
+            while next < data.len() && data[next] == b'\r' {
+                next += 1;
+            }
+            if next < end {
+                let token_end = (next..end)
+                    .take_while(|&i| !data[i].is_ascii_whitespace())
+                    .last()
+                    .map_or(next, |i| i + 1);
+                let token = String::from_utf8_lossy(&data[next..token_end]).to_uppercase();
+                if matches!(token.trim(), "PRINT" | "CLS" | "BITMAP") {
+                    return idx;
+                }
+            }
+        }
+        idx += 1;
+    }
+    end
+}
+
+fn parse_pdf417_raw(header: &str, data: &[u8], state: &mut TsplState) -> Result<(), String> {
+    let flat = header.replace(['\r', '\n'], " ");
+    let args = command_args(&flat, "PDF417");
+    if args.len() < 6 {
+        return Err(format!(
+            "TSPL PDF417 command requires at least 6 parameters, got {}",
+            args.len()
+        ));
+    }
+    let content = String::from_utf8_lossy(data).to_string();
+    push_pdf417(&args, content, args.len(), state)
+}
+
+fn parse_pdf417(line: &str, state: &mut TsplState) -> Result<(), String> {
+    let args = command_args(line, "PDF417");
+    if args.len() < 6 {
+        return Err(format!(
+            "TSPL PDF417 command requires at least 6 parameters, got {}",
+            args.len()
+        ));
+    }
+
+    let content = args.last().cloned().unwrap_or_default();
+    let options_end = args.len().saturating_sub(1);
+    push_pdf417(&args, content, options_end, state)
+}
+
+/// `options_end` is where the option list stops inside `args`: for the
+/// comma form the trailing argument is the content, so it is
+/// `args.len() - 1`; for the raw `L<len>` form every remaining argument is
+/// an option (the content came from the byte cursor).
+fn push_pdf417(
+    args: &[String],
+    content: String,
+    options_end: usize,
+    state: &mut TsplState,
+) -> Result<(), String> {
+    let x = parse_i32_arg(&args[0]).unwrap_or(0);
+    let y = parse_i32_arg(&args[1]).unwrap_or(0);
+    let expected_height = parse_i32_arg(&args[3]).unwrap_or(10).max(1);
+    let orientation = tspl_rotation(&args[4]);
+    let mut barcode = BarcodePdf417 {
+        orientation,
+        row_height: 0,
+        security: 0,
+        columns: 0,
+        rows: 0,
+        truncate: false,
+        module_width: 2,
+        by_height: expected_height,
+    };
+
+    for option in &args[5..options_end] {
+        apply_pdf417_option(option, &mut barcode);
+    }
+
+    state
+        .elements
+        .push(LabelElement::BarcodePdf417(BarcodePdf417WithData {
+            reverse_print: ReversePrint::default(),
+            barcode,
+            position: state.position(x, y),
+            data: content,
+        }));
+    Ok(())
+}
+
+fn apply_pdf417_option(option: &str, barcode: &mut BarcodePdf417) {
+    // Options arrive either comma-separated (`E3,R4,C4`) or packed into one
+    // compound token (`E3R4C4`, TSC's documented sample style). Split the
+    // latter into single-letter runs and apply each; a trailing `L<len>` raw
+    // length was already consumed by the splitter and is ignored here.
+    let upper = option.trim().to_ascii_uppercase();
+    let mut current: Option<(u8, String)> = None;
+    for ch in upper.chars() {
+        if ch.is_ascii_alphabetic() {
+            if let Some((letter, digits)) = current {
+                apply_pdf417_pair(letter, &digits, barcode);
+            }
+            current = Some((ch as u8, String::new()));
+        } else if ch.is_ascii_digit() {
+            let Some((letter, digits)) = current.as_ref() else {
+                continue; // digits before any letter: malformed, skip
+            };
+            // The ECC level's domain is 0-8 — a single digit. A second
+            // digit after `E` belongs to the next (often letterless)
+            // parameter: TSC's documented sample `E30R4C4L26` reads as E3,
+            // stray 0, R4, C4, L26.
+            if letter == &b'E' && !digits.is_empty() {
+                let (letter, digits) = current.take().unwrap();
+                apply_pdf417_pair(letter, &digits, barcode);
+                continue;
+            }
+            current.as_mut().unwrap().1.push(ch);
+        }
+        // anything else: ignored
+    }
+    if let Some((letter, digits)) = current {
+        apply_pdf417_pair(letter, &digits, barcode);
+    }
+}
+
+fn apply_pdf417_pair(letter: u8, digits: &str, barcode: &mut BarcodePdf417) {
+    if letter == b'L' {
+        // Raw-data length — consumed by the command splitter, not an option.
+        return;
+    }
+    let value = digits.parse::<i32>().unwrap_or(0);
+    match letter {
+        b'E' => barcode.security = value.clamp(0, 8),
+        b'W' => barcode.module_width = value.max(1),
+        b'H' => barcode.row_height = value.max(1),
+        b'R' => barcode.rows = value,
+        b'C' => barcode.columns = value,
+        b'T' => barcode.truncate = value == 1,
+        _ => {}
+    }
+}
+
+fn tspl_rotation(arg: &str) -> FieldOrientation {
+    match parse_i32_arg(arg).unwrap_or(0) {
+        1 | 90 => FieldOrientation::Rotated90,
+        2 | 180 => FieldOrientation::Rotated180,
+        3 | 270 => FieldOrientation::Rotated270,
+        _ => FieldOrientation::Normal,
+    }
+}
+
+fn is_device_noop(name: &str) -> bool {
+    matches!(
+        name,
+        "GAP"
+            | "BLINE"
+            | "GAPDETECT"
+            | "BLINEDETECT"
+            | "AUTODETECT"
+            | "OFFSET"
+            | "SPEED"
+            | "DENSITY"
+            | "CODEPAGE"
+            | "FEED"
+            | "BACKFEED"
+            | "FORMFEED"
+            | "HOME"
+            | "SELFTEST"
+            | "INITIALPRINTER"
+            | "DOWNLOAD"
+            | "EOP"
+            | "FILES"
+            | "KILL"
+            | "RUN"
+            | "OUT"
+            | "SET"
+    )
+}

@@ -1,0 +1,3 @@
+vendor/** linguist-vendored
+# Preserve indentation in upstream Metal shader sources verbatim.
+vendor/gpui/** whitespace=-space-before-tab

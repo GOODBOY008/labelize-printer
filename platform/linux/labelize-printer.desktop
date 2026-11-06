@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Labelize Printer
+Comment=Save label printing to PDF or PNG
+Exec=/opt/labelize-printer/labelize-printer
+Icon=labelize-printer
+Categories=Utility;Office;
+Terminal=false
+StartupWMClass=labelize-printer

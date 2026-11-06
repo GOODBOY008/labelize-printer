@@ -1,0 +1,55 @@
+/// Crate version, exposed for the wasm/Android bindings' diagnostics.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+pub mod assets;
+pub mod barcodes;
+pub mod drawers;
+pub mod elements;
+// Compatibility alias for the pre-reorganization layout; the ^CI tables
+// live at parsers::zpl::charsets now (ZPL-only).
+pub mod encodings;
+pub mod error;
+pub mod hex;
+pub mod images;
+pub mod lang;
+pub mod output;
+pub mod parsers;
+#[cfg(feature = "playground")]
+pub mod playground;
+pub mod render;
+pub mod reverse;
+pub(crate) mod tuning;
+
+/// Font-0 characters Labelary blanks even though the substitute subset has
+/// outlines for them (see `tuning`). Exposed for the display-sweep ratchets.
+pub use tuning::FONT0_LABELARY_BLANKED;
+
+#[cfg(feature = "skill")]
+pub mod skill;
+
+#[cfg(feature = "vector")]
+pub use drawers::renderer::scene::{
+    encode_scenes_pdf, LabelScene, RasterFallback, ScenePngOptions, SceneStats,
+};
+pub use drawers::renderer::Renderer;
+pub use elements::drawer_options::DrawerOptions;
+pub use elements::label_info::LabelInfo;
+pub use error::LabelizeError;
+pub use images::monochrome::encode_png;
+pub use images::pdf::encode_pdf;
+pub use lang::{
+    detect_language, format_source, parse_labels, validate, Language, ValidationReport,
+};
+pub use output::{
+    render_label_with_output, render_pdf_with_output, render_png_with_output, OutputMode,
+    OutputOptions,
+};
+pub use parsers::{CpclParser, DplParser, EplParser, TsplParser, ZplParseOptions, ZplParser};
+pub use render::{
+    render_pdf, render_png, RenderOptions, Rendered, DEFAULT_LABEL_HEIGHT_MM,
+    DEFAULT_LABEL_WIDTH_MM,
+};
+pub use reverse::{
+    encode_image_bytes, image_to_tspl, image_to_zpl, tspl_from_image_bytes, zpl_from_image_bytes,
+    ReverseLanguage, ReverseOptions,
+};

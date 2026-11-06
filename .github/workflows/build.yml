@@ -1,0 +1,68 @@
+name: Build and package
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  macos:
+    strategy:
+      matrix:
+        os: [macos-14, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: brew install pkg-config
+      - run: bash scripts/build-openssl.sh
+      - run: cargo build --workspace --release --locked
+      - run: bash scripts/build-native.sh release
+      - run: cargo test -p labelize-printer-core --locked
+      - run: python3 scripts/smoke.py --profile release
+      - run: python3 scripts/collect-licenses.py
+      - run: bash scripts/package-macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.os }}
+          path: dist/*.pkg
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --workspace --release --locked
+      - run: cargo test -p labelize-printer-core --locked
+      - run: python scripts/smoke.py --profile release --skip-ipp
+      - run: python scripts/collect-licenses.py
+      - run: choco install nsis -y
+      - shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist
+          & 'C:\Program Files (x86)\NSIS\makensis.exe' platform/windows/installer.nsi
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: dist/*.exe
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f scripts/linux.Dockerfile -t labelize-printer-build .
+      - run: |
+          docker run --rm -v "$PWD:/build" labelize-printer-build bash -ec '
+            cargo build --workspace --release --locked
+            bash scripts/build-openssl.sh
+            bash scripts/build-native.sh release
+            cargo test -p labelize-printer-core --locked
+            python3 scripts/smoke.py --profile release
+            python3 scripts/collect-licenses.py
+            bash scripts/package-linux.sh
+          '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64
+          path: dist/*.deb

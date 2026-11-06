@@ -1,0 +1,86 @@
+[package]
+name = "labelize"
+version = "1.10.0"
+edition = "2021"
+description = "Fast ZPL, EPL, TSPL/TSC, CPCL & DPL label parser and renderer — convert label data to PNG/PDF. Open-source Labelary alternative."
+keywords = ["zpl", "epl", "tspl", "cpcl", "dpl"]
+categories = ["graphics", "parsing"]
+repository = "https://github.com/GOODBOY008/labelize"
+homepage = "https://github.com/GOODBOY008/labelize"
+license = "MIT AND BSD-3-Clause"
+readme = "README.md"
+exclude = [
+    "testdata/",
+    "docs/",
+    "examples/",
+    "e2e/",
+    ".github/",
+    ".qoder/",
+    ".kiro/",
+    ".idea/",
+    ".claude/",
+    ".remember/",
+    "AGENTS.md",
+    "CHANGELOG.md",
+]
+
+[dependencies]
+image = "0.25"
+imageproc = "0.27"
+ab_glyph = "0.2"
+thiserror = "2"
+lopdf = "0.46"
+flate2 = "1"
+base64 = "0.23"
+krilla = { version = "0.8.2", default-features = false, features = ["raster-images"], optional = true }
+tiny-skia = { version = "0.12", optional = true }
+png = { version = "0.18", optional = true }
+datamatrix = "0.3"
+qrcode = "0.14"
+rxing = { version = "0.9", default-features = false, features = [
+    "encoding_rs",
+    "encoders",
+    "aztec",
+    "pdf417",
+] }
+
+# Optional — CLI
+clap = { version = "4", features = ["derive"], optional = true }
+
+# Optional — HTTP server
+axum = { version = "0.8", optional = true }
+tokio = { version = "1", features = ["full"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+
+[features]
+default = []
+cli = ["dep:clap"]
+playground = []
+# Serialize the report types (Language, ValidationReport) so HTTP layers and
+# SDK consumers share one wire shape instead of re-declaring mirror structs.
+serde = ["dep:serde"]
+serve = ["cli", "playground", "serde", "dep:axum", "dep:tokio", "dep:serde_json"]
+skill = []
+# Searchable hybrid PDF and independently scaled scene PNG output.
+vector = ["dep:krilla", "dep:tiny-skia", "dep:png"]
+
+[[bin]]
+name = "labelize"
+required-features = ["cli"]
+
+[dev-dependencies]
+serde_json = "1"
+proptest = "1"
+# Character-display sweep tests read the embedded fonts' cmaps directly to
+# know which characters must render (mirrors get_ttf_font_data in the renderer).
+ab_glyph = "0.2"
+reqwest = { version = "0.13", features = ["blocking"] }
+sha2 = "0.11"
+# Decoder stack is test-only (DataMatrix escapes and QR mask tests); kept out of the
+# production dependency so Android/WASM consumers don't compile it.
+rxing = { version = "0.9", default-features = false, features = ["decoders", "datamatrix", "qrcode"] }
+
+[[example]]
+name = "vector_audit"
+required-features = ["vector", "serde"]

@@ -1,0 +1,9 @@
+/target/
+/.cache/
+/dist/
+/output/
+/licenses/
+.DS_Store
+*.log
+__pycache__/
+*.py[cod]
