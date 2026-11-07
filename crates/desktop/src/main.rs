@@ -1,17 +1,27 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 mod branding;
+mod i18n;
 mod ui;
 mod worker;
 
 use gpui::{prelude::*, *};
 use gpui_component::{Root, TitleBar};
+use i18n::{Language, Preferences, Text};
 use labelize_printer_core::AppPaths;
 #[cfg(target_os = "linux")]
 use std::time::Duration;
 use ui::{PrinterApp, ScrollPageDown, ScrollPageUp, ShowJobs, ShowSettings, ShowSetup};
 
 actions!(labelize_printer, [Quit]);
+
+fn apply_language(language: Language, cx: &mut App) {
+    gpui_component::set_locale(language.locale());
+    cx.set_menus(vec![Menu {
+        name: "Labelize Printer".into(),
+        items: vec![MenuItem::action(language.text(Text::Quit), Quit)],
+    }]);
+}
 
 struct DesktopLogger;
 impl log::Log for DesktopLogger {
@@ -41,9 +51,14 @@ fn main() -> anyhow::Result<()> {
         log::LevelFilter::Warn
     });
     let paths = AppPaths::discover()?;
+    let preferences = Preferences::load(&paths.root.join("desktop.json")).unwrap_or_else(|error| {
+        log::warn!("{error:#}");
+        Preferences::default()
+    });
     let app = Application::new().with_assets(gpui_component_assets::Assets);
     app.run(move |cx| {
         gpui_component::init(cx);
+        apply_language(preferences.language, cx);
         gpui_component::Theme::change(gpui_component::ThemeMode::Light, None, cx);
         let font = branding::ui_font(cx);
         let theme = gpui_component::Theme::global_mut(cx);
@@ -88,10 +103,6 @@ fn main() -> anyhow::Result<()> {
                 Some("LabelizePrinter && !Input"),
             ),
         ]);
-        cx.set_menus(vec![Menu {
-            name: "Labelize Printer".into(),
-            items: vec![MenuItem::action("退出", Quit)],
-        }]);
         cx.on_window_closed(|cx| {
             if cx.windows().is_empty() {
                 cx.quit();
@@ -135,7 +146,7 @@ fn main() -> anyhow::Result<()> {
                 |window, cx| {
                     #[cfg(windows)]
                     branding::set_window_icon(window);
-                    let view = cx.new(|cx| PrinterApp::new(paths, font, window, cx));
+                    let view = cx.new(|cx| PrinterApp::new(paths, font, preferences, window, cx));
                     // Root owns an erased AnyView. Explicitly invalidate the window
                     // when its child model changes, including IPC updates.
                     cx.observe(&view, |_, cx| cx.refresh_windows()).detach();

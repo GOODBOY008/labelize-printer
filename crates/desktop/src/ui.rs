@@ -1,4 +1,5 @@
 use crate::branding;
+use crate::i18n::{Language, Preferences, Text};
 use crate::worker::{self, Activity, Event, Work};
 use gpui::{prelude::*, *};
 #[cfg(windows)]
@@ -7,7 +8,7 @@ use gpui_component::{
     button::{Button, ButtonVariants},
     input::{Input, InputState},
     scroll::ScrollableElement,
-    Disableable, Selectable, TitleBar,
+    Disableable, Selectable, Sizable, TitleBar,
 };
 use labelize_printer_core::{AppPaths, JobState, OutputFormat, Settings, Snapshot};
 use std::{
@@ -40,19 +41,19 @@ enum Page {
 }
 
 impl Page {
-    fn title(self) -> &'static str {
+    fn title(self, language: Language) -> &'static str {
         match self {
-            Self::Setup => "安装向导",
-            Self::Settings => "输出设置",
-            Self::Jobs => "最近任务",
+            Self::Setup => language.text(Text::Setup),
+            Self::Settings => language.text(Text::Settings),
+            Self::Jobs => language.text(Text::Jobs),
         }
     }
 
-    fn description(self) -> &'static str {
+    fn description(self, language: Language) -> &'static str {
         match self {
-            Self::Setup => "添加系统打印机，或先用一份 ZPL 测试输出。",
-            Self::Settings => "选择文件格式、保存目录和缺省标签尺寸。",
-            Self::Jobs => "查看任务状态，打开已保存的文件。",
+            Self::Setup => language.text(Text::SetupDescription),
+            Self::Settings => language.text(Text::SettingsDescription),
+            Self::Jobs => language.text(Text::JobsDescription),
         }
     }
 }
@@ -63,6 +64,8 @@ pub struct PrinterApp {
     scroll: ScrollHandle,
     logo: Arc<Image>,
     font: Font,
+    preferences: Preferences,
+    preferences_path: PathBuf,
     snapshot: Option<Snapshot>,
     connection_error: Option<String>,
     output_dir: Entity<InputState>,
@@ -78,7 +81,14 @@ pub struct PrinterApp {
 }
 
 impl PrinterApp {
-    pub fn new(paths: AppPaths, font: Font, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        paths: AppPaths,
+        font: Font,
+        preferences: Preferences,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let preferences_path = paths.root.join("desktop.json");
         let draft = Settings::default();
         let output_dir = cx.new(|cx| {
             InputState::new(window, cx)
@@ -123,6 +133,8 @@ impl PrinterApp {
             scroll: ScrollHandle::default(),
             logo: branding::logo(),
             font,
+            preferences,
+            preferences_path,
             snapshot: None,
             connection_error: None,
             output_dir,
@@ -136,6 +148,31 @@ impl PrinterApp {
             activity: None,
             modal: false,
         }
+    }
+
+    fn text(&self, text: Text) -> &'static str {
+        self.preferences.language.text(text)
+    }
+
+    fn switch_language(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let preferences = Preferences {
+            language: self.preferences.language.other(),
+        };
+        match preferences.save(&self.preferences_path) {
+            Ok(()) => {
+                self.preferences = preferences;
+                crate::apply_language(self.preferences.language, cx);
+                self.notice = None;
+                window.refresh();
+            }
+            Err(error) => {
+                self.notice = Some(Err(format!(
+                    "{}\n{error}",
+                    self.text(Text::SaveLanguageError)
+                )));
+            }
+        }
+        cx.notify();
     }
 
     fn receive(&mut self, event: Event, window: &mut Window, cx: &mut Context<Self>) {
@@ -164,14 +201,12 @@ impl PrinterApp {
                         self.change_page(Page::Jobs, window, cx);
                     }
                     match activity {
-                        Activity::Refresh => "打印环境已刷新。",
-                        Activity::Save => "设置已保存，将用于新任务。",
-                        Activity::Install => {
-                            "打印机已配置，可以从系统打印窗口选择 Labelize Printer。"
-                        }
-                        Activity::Test => "测试任务已提交。文件写入后会显示为「已保存」。",
-                        Activity::Retry => "任务已重新排队。",
-                        Activity::Remove => "系统打印队列已移除。",
+                        Activity::Refresh => self.text(Text::EnvironmentRefreshed),
+                        Activity::Save => self.text(Text::SettingsSaved),
+                        Activity::Install => self.text(Text::PrinterConfigured),
+                        Activity::Test => self.text(Text::TestSubmitted),
+                        Activity::Retry => self.text(Text::JobRetried),
+                        Activity::Remove => self.text(Text::PrinterRemoved),
                     }
                     .into()
                 }));
@@ -283,7 +318,7 @@ impl PrinterApp {
                 self.notice = None;
                 self.activity = Some(activity);
             }
-            Err(_) => self.notice = Some(Err("后台连接线程已退出，请重新打开应用。".into())),
+            Err(_) => self.notice = Some(Err(self.text(Text::WorkerStopped).into())),
         }
         cx.notify();
     }
@@ -348,24 +383,23 @@ impl PrinterApp {
                 .value()
                 .trim()
                 .parse()
-                .map_err(|_| anyhow::anyhow!("请输入有效的标签宽度。"))?;
+                .map_err(|_| anyhow::anyhow!(self.text(Text::InvalidWidth)))?;
             settings.height_mm = self
                 .height
                 .read(cx)
                 .value()
                 .trim()
                 .parse()
-                .map_err(|_| anyhow::anyhow!("请输入有效的标签高度。"))?;
+                .map_err(|_| anyhow::anyhow!(self.text(Text::InvalidHeight)))?;
             settings.raw_port = snapshot.settings.raw_port;
             settings.ipp_port = snapshot.settings.ipp_port;
             settings.setup_complete = snapshot.settings.setup_complete;
             anyhow::ensure!(
                 settings.output_dir.is_absolute(),
-                "请选择一个完整的输出目录路径。"
+                self.text(Text::InvalidDirectory)
             );
-            labelize_printer_core::validate_media(settings.width_mm, settings.height_mm).map_err(
-                |_| anyhow::anyhow!("标签宽度和高度必须为大于 0 且不超过 4000 的毫米数。"),
-            )?;
+            labelize_printer_core::validate_media(settings.width_mm, settings.height_mm)
+                .map_err(|_| anyhow::anyhow!(self.text(Text::InvalidMedia)))?;
             settings.validate()?;
             Ok(settings)
         })();
@@ -397,7 +431,7 @@ impl PrinterApp {
             files: false,
             directories: true,
             multiple: false,
-            prompt: Some("选择输出目录".into()),
+            prompt: Some(self.text(Text::ChooseOutputFolder).into()),
         });
         cx.spawn_in(window, async move |this, cx| {
             let result = selection.await;
@@ -418,7 +452,10 @@ impl PrinterApp {
                             }
                         }
                         Ok(Err(error)) => {
-                            app.notice = Some(Err(format!("无法打开目录选择器：{error}")));
+                            app.notice = Some(Err(format!(
+                                "{}\n{error}",
+                                app.text(Text::FolderPickerError)
+                            )));
                             app.scroll.set_offset(Point::default());
                         }
                         _ => {}
@@ -438,9 +475,12 @@ impl PrinterApp {
         cx.notify();
         let choice = window.prompt(
             PromptLevel::Warning,
-            "移除 Labelize Printer？",
-            Some("系统打印窗口将移除这台打印机，已保存的文件会保留。"),
-            &[PromptButton::cancel("取消"), PromptButton::new("移除队列")],
+            self.text(Text::ConfirmRemove),
+            Some(self.text(Text::ConfirmRemoveDescription)),
+            &[
+                PromptButton::cancel(self.text(Text::Cancel)),
+                PromptButton::new(self.text(Text::RemoveQueue)),
+            ],
             cx,
         );
         cx.spawn(async move |this, cx| {
@@ -458,9 +498,10 @@ impl PrinterApp {
 
     fn open_path(&mut self, path: &Path, cx: &mut Context<Self>) {
         let result = if !path.is_absolute() || !path.exists() {
-            Err("此文件或目录尚未创建，或已被移动。".into())
+            Err(self.text(Text::MissingPath).into())
         } else {
-            open::that_detached(path).map_err(|error| format!("无法打开：{error}"))
+            open::that_detached(path)
+                .map_err(|error| format!("{}\n{error}", self.text(Text::OpenPathError)))
         };
         if let Err(error) = result {
             self.notice = Some(Err(error));
@@ -484,7 +525,12 @@ impl PrinterApp {
                             .font_weight(FontWeight::SEMIBOLD)
                             .child("Labelize Printer"),
                     )
-                    .child(div().text_xs().text_color(rgb(MUTED)).child("本地标签打印")),
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(rgb(MUTED))
+                            .child(self.text(Text::Tagline)),
+                    ),
             );
         let mut nav = div()
             .flex()
@@ -505,7 +551,7 @@ impl PrinterApp {
                     .text_sm()
                     .font_weight(FontWeight::MEDIUM)
                     .when(compact, |this| this.flex_1())
-                    .label(page.title())
+                    .label(page.title(self.preferences.language))
                     .on_click(
                         cx.listener(move |app, _, window, cx| app.change_page(page, window, cx)),
                     ),
@@ -537,11 +583,11 @@ impl PrinterApp {
     fn refresh_button(&self, cx: &mut Context<Self>) -> Button {
         Button::new("refresh-platform")
             .label(if self.activity == Some(Activity::Refresh) {
-                "检测中…"
+                self.text(Text::Detecting)
             } else if self.connected() {
-                "刷新检测"
+                self.text(Text::Refresh)
             } else {
-                "连接后台"
+                self.text(Text::Connect)
             })
             .disabled(self.busy())
             .on_click(cx.listener(|app, _, _, cx| app.send(Work::Refresh, cx)))
@@ -550,8 +596,8 @@ impl PrinterApp {
     fn form(&self, compact: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let disabled = self.busy() || self.snapshot.is_none();
         let format_row = [
-            ("pdf", OutputFormat::Pdf, "PDF · 每个任务一份"),
-            ("png", OutputFormat::Png, "PNG · 每页一张"),
+            ("pdf", OutputFormat::Pdf, self.text(Text::PdfFormat)),
+            ("png", OutputFormat::Png, self.text(Text::PngFormat)),
         ]
         .into_iter()
         .fold(button_row(), |row, (id, format, label)| {
@@ -601,16 +647,16 @@ impl PrinterApp {
             )
             .child(
                 Button::new("browse")
-                    .label("选择目录…")
+                    .label(self.text(Text::Browse))
                     .disabled(disabled)
                     .on_click(cx.listener(|app, _, window, cx| app.choose_directory(window, cx))),
             );
         card(compact)
-            .child(section_title("文件与标签"))
-            .child(field("输出格式", format_row))
-            .child(field("保存目录", dir))
+            .child(section_title(self.text(Text::FilesAndLabels)))
+            .child(field(self.text(Text::OutputFormat), format_row))
+            .child(field(self.text(Text::OutputFolder), dir))
             .child(field(
-                "缺省宽度 × 高度（mm）",
+                self.text(Text::LabelSize),
                 button_row()
                     .items_center()
                     .child(
@@ -625,15 +671,15 @@ impl PrinterApp {
                             .child(Input::new(&self.height).disabled(disabled)),
                     ),
             ))
-            .child(field("ZPL 分辨率", dpi_row))
+            .child(field(self.text(Text::ZplResolution), dpi_row))
             .child(
                 div()
                     .text_sm()
                     .text_color(rgb(MUTED))
                     .child(if fixed_resolution.is_some() {
-                        "分辨率随所选驱动调整。"
+                        self.text(Text::DriverResolution)
                     } else {
-                        "ZPL 声明的尺寸优先。系统栅格保留原尺寸。"
+                        self.text(Text::MediaDescription)
                     }),
             )
             .child(
@@ -642,9 +688,9 @@ impl PrinterApp {
                         .outline()
                         .selected(self.draft.autostart)
                         .label(if self.draft.autostart {
-                            "登录自动启动：开"
+                            self.text(Text::AutostartOn)
                         } else {
-                            "登录自动启动：关"
+                            self.text(Text::AutostartOff)
                         })
                         .disabled(disabled)
                         .on_click(cx.listener(|app, _, _, cx| {
@@ -657,28 +703,30 @@ impl PrinterApp {
 
     fn setup(&self, compact: bool, cx: &mut Context<Self>) -> impl IntoElement {
         let backend = if self.connected() {
-            "后台已连接"
+            self.text(Text::Connected)
         } else if self.connection_error.is_some() {
-            "后台未连接"
+            self.text(Text::Disconnected)
         } else {
-            "正在连接后台…"
+            self.text(Text::Connecting)
         };
         let queue = if self.queue_installed() {
-            "系统打印机已添加"
+            self.text(Text::QueueAdded)
         } else {
-            "系统打印机尚未添加"
+            self.text(Text::QueueMissing)
         };
         #[allow(unused_mut)]
-        let mut status = card(compact).child(section_title("系统打印机")).child(
-            button_row()
-                .items_center()
-                .child(badge(
-                    backend,
-                    if self.connected() { 0x17603d } else { MUTED },
-                ))
-                .child(badge(queue, MUTED))
-                .child(self.refresh_button(cx)),
-        );
+        let mut status = card(compact)
+            .child(section_title(self.text(Text::SystemPrinter)))
+            .child(
+                button_row()
+                    .items_center()
+                    .child(badge(
+                        backend,
+                        if self.connected() { 0x17603d } else { MUTED },
+                    ))
+                    .child(badge(queue, MUTED))
+                    .child(self.refresh_button(cx)),
+            );
         #[cfg(windows)]
         {
             let no_drivers = self
@@ -691,18 +739,20 @@ impl PrinterApp {
                         div()
                             .text_sm()
                             .text_color(rgb(MUTED))
-                            .child("安装官方 ZDesigner ZPL 驱动后，点击「刷新检测」。"),
+                            .child(self.text(Text::InstallDriver)),
                     )
                     .child(
                         button_row().child(
                             Button::new("download-driver")
-                                .label("Zebra 驱动下载")
+                                .label(self.text(Text::DownloadDriver))
                                 .on_click(cx.listener(|app, _, _, cx| {
                                     if let Err(error) = open::that_detached(
                                         labelize_printer_core::platform::DRIVER_URL,
                                     ) {
-                                        app.notice =
-                                            Some(Err(format!("无法打开驱动下载页：{error}")));
+                                        app.notice = Some(Err(format!(
+                                            "{}\n{error}",
+                                            app.text(Text::DriverDownloadError)
+                                        )));
                                         cx.notify();
                                     }
                                 })),
@@ -711,18 +761,18 @@ impl PrinterApp {
             } else {
                 status = status
                     .child(field(
-                        "ZDesigner ZPL 驱动",
+                        self.text(Text::ZplDriver),
                         Select::new(&self.driver)
-                            .placeholder("选择驱动")
+                            .placeholder(self.text(Text::SelectDriver))
                             .w_full()
                             .disabled(self.busy()),
                     ))
                     .child(div().text_sm().text_color(rgb(MUTED)).child(
                         if self.draft.windows_driver.is_some() && self.driver_resolution().is_none()
                         {
-                            "请在下方选择与驱动一致的 ZPL 分辨率。"
+                            self.text(Text::ChooseResolution)
                         } else {
-                            "在驱动设置中将 Status check type 设置为 Disabled。"
+                            self.text(Text::DisableStatusCheck)
                         },
                     ));
             }
@@ -746,17 +796,17 @@ impl PrinterApp {
             .when(self.queue_installed(), |this| {
                 this.child(
                     card(compact)
-                        .child(section_title("系统队列"))
+                        .child(section_title(self.text(Text::SystemQueue)))
                         .child(
                             div()
                                 .text_sm()
                                 .text_color(rgb(MUTED))
-                                .child("关闭窗口后，后台仍可接收打印。"),
+                                .child(self.text(Text::BackgroundPrinting)),
                         )
                         .child(
                             button_row().child(
                                 Button::new("remove-queue")
-                                    .label("移除打印机…")
+                                    .label(self.text(Text::RemovePrinter))
                                     .disabled(self.busy() || !self.connected())
                                     .on_click(cx.listener(|app, _, window, cx| {
                                         app.confirm_remove(window, cx)
@@ -777,9 +827,9 @@ impl PrinterApp {
                 Button::new("test-job")
                     .primary()
                     .label(if self.activity == Some(Activity::Test) {
-                        "正在提交…"
+                        self.text(Text::Submitting)
                     } else {
-                        "测试 ZPL 输出"
+                        self.text(Text::TestZpl)
                     })
                     .disabled(self.busy() || !self.connected())
                     .on_click(cx.listener(|app, _, _, cx| app.send(Work::Test(None), cx))),
@@ -787,29 +837,31 @@ impl PrinterApp {
         );
         if jobs.is_empty() {
             list = list.child(
-                card(compact).child(section_title("暂无任务")).child(
-                    div()
-                        .text_color(rgb(MUTED))
-                        .child(if self.queue_installed() {
-                            "从系统打印窗口选择 Labelize Printer，或提交一份测试标签。"
-                        } else {
-                            "先测试文件输出，或到安装向导添加系统打印机。"
-                        }),
-                ),
+                card(compact)
+                    .child(section_title(self.text(Text::NoJobs)))
+                    .child(
+                        div()
+                            .text_color(rgb(MUTED))
+                            .child(if self.queue_installed() {
+                                self.text(Text::PrintFirstJob)
+                            } else {
+                                self.text(Text::SetupFirstJob)
+                            }),
+                    ),
             );
         }
         for job in jobs {
             let (label, color) = match job.state {
-                JobState::Receiving => ("接收中", MUTED),
-                JobState::Queued => ("排队中", MUTED),
-                JobState::Processing => ("处理中", ACCENT),
-                JobState::Saved => ("已保存", 0x17603d),
-                JobState::Failed => ("失败", 0xa22a34),
+                JobState::Receiving => (self.text(Text::Receiving), MUTED),
+                JobState::Queued => (self.text(Text::Queued), MUTED),
+                JobState::Processing => (self.text(Text::Processing), ACCENT),
+                JobState::Saved => (self.text(Text::Saved), 0x17603d),
+                JobState::Failed => (self.text(Text::Failed), 0xa22a34),
             };
             let source = if job.source.starts_with("ipp:") {
-                "系统打印"
+                self.text(Text::SystemPrint)
             } else if job.source == "test" {
-                "测试 ZPL"
+                self.text(Text::TestSource)
             } else {
                 "ZPL"
             };
@@ -823,7 +875,10 @@ impl PrinterApp {
             let detail = if job.page_count == 0 {
                 format!("{time} · {source}")
             } else {
-                format!("{time} · {source} · {} 页", job.page_count)
+                format!(
+                    "{time} · {source} · {}",
+                    self.preferences.language.page_count(job.page_count)
+                )
             };
             let mut row = card(compact)
                 .id(SharedString::from(job.id.clone()))
@@ -852,17 +907,18 @@ impl PrinterApp {
             if let Some(file) = job.output_files.first() {
                 let file = file.clone();
                 if let Some(folder) = file.parent().map(Path::to_path_buf) {
-                    controls =
-                        controls.child(Button::new("folder").label("打开目录").on_click(
-                            cx.listener(move |app, _, _, cx| app.open_path(&folder, cx)),
-                        ));
+                    controls = controls.child(
+                        Button::new("folder")
+                            .label(self.text(Text::OpenFolder))
+                            .on_click(cx.listener(move |app, _, _, cx| app.open_path(&folder, cx))),
+                    );
                 }
                 controls = controls.child(
                     Button::new("open")
                         .label(if job.output_files.len() > 1 {
-                            "打开第 1 页"
+                            self.text(Text::OpenFirstPage)
                         } else {
-                            "打开文件"
+                            self.text(Text::OpenFile)
                         })
                         .on_click(cx.listener(move |app, _, _, cx| app.open_path(&file, cx))),
                 );
@@ -871,7 +927,7 @@ impl PrinterApp {
                 let id = job.id.clone();
                 controls = controls.child(
                     Button::new("retry")
-                        .label("重试")
+                        .label(self.text(Text::Retry))
                         .disabled(self.busy() || !self.connected())
                         .on_click(
                             cx.listener(move |app, _, _, cx| app.send(Work::Retry(id.clone()), cx)),
@@ -892,9 +948,9 @@ impl PrinterApp {
                     .child(
                         Button::new("test-setup")
                             .label(if self.activity == Some(Activity::Test) {
-                                "正在提交…"
+                                self.text(Text::Submitting)
                             } else {
-                                "保存并测试输出"
+                                self.text(Text::SaveAndTest)
                             })
                             .disabled(disabled)
                             .on_click(
@@ -905,11 +961,11 @@ impl PrinterApp {
                         Button::new("install")
                             .primary()
                             .label(if self.activity == Some(Activity::Install) {
-                                "正在配置…"
+                                self.text(Text::Configuring)
                             } else if self.queue_installed() {
-                                "修复打印机"
+                                self.text(Text::RepairPrinter)
                             } else {
-                                "添加打印机"
+                                self.text(Text::AddPrinter)
                             })
                             .disabled(!self.can_install())
                             .on_click(
@@ -921,7 +977,7 @@ impl PrinterApp {
                 actions = actions
                     .child(
                         Button::new("open-output")
-                            .label("打开输出目录")
+                            .label(self.text(Text::OpenOutputFolder))
                             .on_click(cx.listener(|app, _, _, cx| {
                                 let path = PathBuf::from(app.output_dir.read(cx).value().as_str());
                                 app.open_path(&path, cx);
@@ -931,9 +987,9 @@ impl PrinterApp {
                         Button::new("save")
                             .primary()
                             .label(if self.activity == Some(Activity::Save) {
-                                "正在保存…"
+                                self.text(Text::Saving)
                             } else {
-                                "保存设置"
+                                self.text(Text::SaveSettings)
                             })
                             .disabled(disabled)
                             .on_click(
@@ -1043,13 +1099,13 @@ impl Render for PrinterApp {
                         div()
                             .text_2xl()
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child(self.page.title()),
+                            .child(self.page.title(self.preferences.language)),
                     )
                     .child(
                         div()
                             .text_sm()
                             .text_color(rgb(MUTED))
-                            .child(self.page.description()),
+                            .child(self.page.description(self.preferences.language)),
                     ),
             );
         if let Some(notice) = &self.notice {
@@ -1059,7 +1115,7 @@ impl Render for PrinterApp {
             });
         }
         if self.connection_error.is_some() {
-            body = body.child(banner("后台未连接。可重新连接后继续操作。".into(), true));
+            body = body.child(banner(self.text(Text::ReconnectDescription).into(), true));
             if self.page != Page::Setup {
                 body = body.child(button_row().child(self.refresh_button(cx)));
             }
@@ -1126,9 +1182,30 @@ impl Render for PrinterApp {
             .child(
                 TitleBar::new().child(
                     div()
-                        .text_xs()
-                        .text_color(rgb(MUTED))
-                        .child("Labelize Printer"),
+                        .flex()
+                        .w_full()
+                        .min_w_0()
+                        .items_center()
+                        .justify_between()
+                        .pr_3()
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(rgb(MUTED))
+                                .child("Labelize Printer"),
+                        )
+                        .child(
+                            Button::new("switch-language")
+                                .ghost()
+                                .small()
+                                .occlude()
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                .label(self.preferences.language.other().name())
+                                .disabled(self.modal)
+                                .on_click(cx.listener(|app, _, window, cx| {
+                                    app.switch_language(window, cx)
+                                })),
+                        ),
                 ),
             )
             .child(self.header(compact, padding, cx))

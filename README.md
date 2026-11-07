@@ -13,9 +13,9 @@ The desktop app sets up the print queue, manages output settings, and shows rece
 
 Labelize is an open-source Rust engine that renders ZPL, EPL, TSPL/TSC, CPCL, and DPL to PNG and PDF. Labelize Printer embeds its Rust library for ZPL jobs. Labelize is also available as a CLI, HTTP service, WebAssembly package, and Android library. [Labelize source and documentation](https://github.com/GOODBOY008/labelize)
 
-## Try the preview
+## Install
 
-Download your platform's unsigned installer and `SHA256SUMS` from GitHub Releases. Each preview lists the environments it was tested on. [Preview downloads](https://github.com/GOODBOY008/labelize-printer/releases)
+Download your platform's unsigned installer and `SHA256SUMS` from GitHub Releases. Each release lists its tested environments and outstanding checks. [Download installers](https://github.com/GOODBOY008/labelize-printer/releases)
 
 On macOS, Homebrew selects the PKG for Apple Silicon or Intel.
 
@@ -24,6 +24,8 @@ brew install --cask goodboy008/labelize-printer/labelize-printer
 ```
 
 The tap follows published Printer releases, including previews. [Homebrew tap and upgrade instructions](https://github.com/GOODBOY008/homebrew-labelize-printer)
+
+Use the language button in the title bar to switch between English and Simplified Chinese. Your choice is saved immediately and restored when you reopen the app.
 
 | Platform | Installer | Validation |
 | --- | --- | --- |

@@ -7,7 +7,7 @@
 <key>CFBundleExecutable</key><string>labelize-printer</string>
 <key>CFBundleIconFile</key><string>LabelizePrinter.icns</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleVersion</key><string>2</string>
+<key>CFBundleVersion</key><string>3</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSDocumentsFolderUsageDescription</key><string>Save your printed labels to the selected output directory.</string>

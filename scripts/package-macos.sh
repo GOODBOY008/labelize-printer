@@ -18,6 +18,8 @@ cp "$binary_dir/labelize-printer" "$binary_dir/labelize-printer-daemon" "$binary
 cp platform/macos/Info.plist "$app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $version" "$app/Contents/Info.plist"
 cp platform/macos/LabelizePrinter.icns "$app/Contents/Resources/"
+icon_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$app/Contents/Info.plist")"
+test -s "$app/Contents/Resources/$icon_name"
 cp -R platform/macos "$app/Contents/Resources/platform/"
 cp LICENSE THIRD_PARTY_NOTICES.md "$app/Contents/Resources/"
 cp -R licenses "$app/Contents/Resources/"
@@ -29,6 +31,7 @@ for name in labelize-printer-ipp labelize-printer-daemon labelize-printer; do
   codesign --force --sign - "$binary"
 done
 codesign --force --sign - "$app"
+codesign --verify --deep --strict "$app"
 pkgbuild --component "$app" --install-location /Applications --identifier com.labelize.printer \
   --version "$version" "dist/LabelizePrinter-$version-macos-$architecture-$profile.pkg"
 echo 'Unsigned internal trial package. Open the app to finish per-user queue setup.'
