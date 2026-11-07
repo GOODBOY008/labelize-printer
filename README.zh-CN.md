@@ -13,6 +13,14 @@ Labelize 是开源 Rust 渲染引擎，可将 ZPL、EPL、TSPL/TSC、CPCL 和 DP
 
 从 GitHub Releases 下载对应平台的未签名安装包和 `SHA256SUMS`。发行说明列出了已验证环境和待验收项目。[试用包下载](https://github.com/GOODBOY008/labelize-printer/releases) · [开发构建](https://github.com/GOODBOY008/labelize-printer/actions/workflows/build.yml)
 
+macOS 用户可通过 Homebrew 安装，自动选择 Apple Silicon 或 Intel 版 PKG。
+
+```sh
+brew install --cask goodboy008/labelize-printer/labelize-printer
+```
+
+tap 跟随 Printer 已发布的版本，包含预发行版。[Homebrew tap 与升级说明](https://github.com/GOODBOY008/homebrew-labelize-printer)
+
 ## 打印流程
 
 ```mermaid

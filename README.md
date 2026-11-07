@@ -17,6 +17,14 @@ Labelize is an open-source Rust engine that renders ZPL, EPL, TSPL/TSC, CPCL, an
 
 Download your platform's unsigned installer and `SHA256SUMS` from GitHub Releases. Each preview lists the environments it was tested on. [Preview downloads](https://github.com/GOODBOY008/labelize-printer/releases)
 
+On macOS, Homebrew selects the PKG for Apple Silicon or Intel.
+
+```sh
+brew install --cask goodboy008/labelize-printer/labelize-printer
+```
+
+The tap follows published Printer releases, including previews. [Homebrew tap and upgrade instructions](https://github.com/GOODBOY008/homebrew-labelize-printer)
+
 | Platform | Installer | Validation |
 | --- | --- | --- |
 | Windows x64 | NSIS EXE | Upgrade and direct ZPL verified on Windows 11 ARM64 with x64 emulation. ZDesigner system printing is pending. |
@@ -26,7 +34,7 @@ Download your platform's unsigned installer and `SHA256SUMS` from GitHub Release
 
 See [ACCEPTANCE.md](ACCEPTANCE.md) for the test environments and outstanding checks.
 
-1. Install the downloaded package. On Linux, pass the downloaded `.deb` path to `sudo apt install`.
+1. Install with Homebrew on macOS or use the downloaded package. On Linux, pass the downloaded `.deb` path to `sudo apt install`.
 2. Open Labelize Printer, choose an output directory and format, and add the printer from the setup page.
 3. Select **Labelize Printer** in the system print dialog. Use the setup page's test output to verify file saving and open the result in Recent Jobs.
 
