@@ -5,8 +5,15 @@
 独立的 Rust + GPUI 本地虚拟打印机，复用 Labelize，将打印任务保存为多页 PDF 或逐页 PNG。
 首版面向当前登录用户、单台计算机、单队列。无需云端服务。
 
-登录 GitHub，在 `main` 分支成功的构建记录中，从 **Artifacts** 下载对应平台的试用包。
-[构建与下载](https://github.com/GOODBOY008/labelize-printer/actions/workflows/build.yml)
+## 上游项目 Labelize
+
+Labelize 是开源 Rust 渲染引擎，可将 ZPL、EPL、TSPL/TSC、CPCL 和 DPL 转为 PNG 或 PDF。Labelize Printer 使用其 Rust 库处理 ZPL 任务。上游还提供命令行、HTTP API、WebAssembly 和 Android 库。[Labelize 源码与文档](https://github.com/GOODBOY008/labelize)
+
+## 试用下载
+
+从 GitHub Releases 下载对应平台的未签名安装包和 `SHA256SUMS`。发行说明列出了已验证环境和待验收项目。[试用包下载](https://github.com/GOODBOY008/labelize-printer/releases) · [开发构建](https://github.com/GOODBOY008/labelize-printer/actions/workflows/build.yml)
+
+## 打印流程
 
 ```mermaid
 flowchart LR

@@ -9,26 +9,32 @@ Labelize Printer is a local virtual printer built with Rust and GPUI. Select it 
 
 The desktop app sets up the print queue, manages output settings, and shows recent jobs. A per-user background process keeps accepting jobs after you close the window.
 
-## Try a build
+## Labelize rendering engine
 
-Sign in to GitHub, open a successful run on the `main` branch, and download your platform's ZIP under **Artifacts**. The packages are unsigned preview builds. [Build and package](https://github.com/GOODBOY008/labelize-printer/actions/workflows/build.yml)
+Labelize is an open-source Rust engine that renders ZPL, EPL, TSPL/TSC, CPCL, and DPL to PNG and PDF. Labelize Printer embeds its Rust library for ZPL jobs. Labelize is also available as a CLI, HTTP service, WebAssembly package, and Android library. [Labelize source and documentation](https://github.com/GOODBOY008/labelize)
 
-| Platform | Artifact | Validation |
+## Try the preview
+
+Download your platform's unsigned installer and `SHA256SUMS` from GitHub Releases. Each preview lists the environments it was tested on. [Preview downloads](https://github.com/GOODBOY008/labelize-printer/releases)
+
+| Platform | Installer | Validation |
 | --- | --- | --- |
-| Windows x64 | `windows-x64` · NSIS EXE | Setup, upgrade, and direct ZPL verified under Windows 11 ARM64 x64 emulation. ZDesigner system printing is pending. |
-| macOS Apple Silicon | `macos-arm64` · PKG | Native system printing verified. |
-| macOS Intel | `macos-x86_64` · PKG | Package and background service tested with Rosetta. Intel desktop testing is pending. |
-| Debian 12 / Ubuntu 24.04 x64 | `linux-amd64` · DEB | CUPS printing verified in a Debian 12 container. Ubuntu desktop testing is pending. |
+| Windows x64 | NSIS EXE | Upgrade and direct ZPL verified on Windows 11 ARM64 with x64 emulation. ZDesigner system printing is pending. |
+| macOS Apple Silicon | ARM64 PKG | Native system printing verified. |
+| macOS Intel | x86_64 PKG | Package payload and CUPS printing tested with Rosetta. Intel desktop testing is pending. |
+| Debian 12 / Ubuntu 24.04 x64 | amd64 DEB | CUPS printing verified in containers on both distributions. Desktop testing is pending. |
 
 See [ACCEPTANCE.md](ACCEPTANCE.md) for the test environments and outstanding checks.
 
-1. Extract the ZIP and install the package. On Linux, run `sudo apt install ./labelize-printer_*_amd64.deb` from the extraction directory.
+1. Install the downloaded package. On Linux, pass the downloaded `.deb` path to `sudo apt install`.
 2. Open Labelize Printer, choose an output directory and format, and add the printer from the setup page.
 3. Select **Labelize Printer** in the system print dialog. Use the setup page's test output to verify file saving and open the result in Recent Jobs.
 
 Windows system printing requires the official ZDesigner v10 ZD421 ZPL driver at 203 or 300 dpi. Install it separately and select it in the setup page. [Zebra driver downloads](https://www.zebra.com/us/en/support-downloads/printer-software/printer-drivers.html)
 
 On Linux, the setup page uses CUPS and the desktop PolicyKit agent to register the queue. The Wayland directory picker uses an XDG desktop portal.
+
+Development builds are available through GitHub Actions. [Build and package](https://github.com/GOODBOY008/labelize-printer/actions/workflows/build.yml)
 
 ## How printing works
 
@@ -67,4 +73,4 @@ See the [Chinese guide](README.zh-CN.md) for packaging and additional smoke-test
 
 For a bug report, include your platform, package or commit version, and whether the job came through a system queue or direct ZPL. [GitHub Issues](https://github.com/GOODBOY008/labelize-printer/issues)
 
-Released under the MIT license. [License](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [Labelize upstream](https://github.com/GOODBOY008/labelize)
+Released under the MIT license. [License](LICENSE) · [Third-party notices](THIRD_PARTY_NOTICES.md)
