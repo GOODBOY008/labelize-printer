@@ -86,7 +86,7 @@ target/debug/labelize-printer
 驱动纸张、分辨率应与向导一致（203→8 dpmm，300→12 dpmm）。
 Windows Protected Print Mode 与第三方驱动不兼容；程序检测并报告，不修改该策略。
 
-[官方驱动下载](https://www.zebra.com/us/en/support-downloads/printer-software/printer-drivers.html)。
+[官方驱动下载](https://www.zebra.com/us/en/support-downloads/printers/printer-drivers.html)。
 驱动不随安装包重新分发。真实驱动任务边界和输出兼容性须完成 [验收表](ACCEPTANCE.md) 后确认。
 
 ### macOS / Linux

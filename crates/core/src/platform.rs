@@ -10,7 +10,7 @@ use std::{
 
 pub const QUEUE_NAME: &str = "LabelizePrinter";
 pub const DRIVER_URL: &str =
-    "https://www.zebra.com/us/en/support-downloads/printer-software/printer-drivers.html";
+    "https://www.zebra.com/us/en/support-downloads/printers/printer-drivers.html";
 
 pub fn sibling_binary(name: &str) -> Result<PathBuf> {
     let parent = std::env::current_exe()?

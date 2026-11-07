@@ -38,7 +38,7 @@ See [ACCEPTANCE.md](ACCEPTANCE.md) for the test environments and outstanding che
 2. Open Labelize Printer, choose an output directory and format, and add the printer from the setup page.
 3. Select **Labelize Printer** in the system print dialog. Use the setup page's test output to verify file saving and open the result in Recent Jobs.
 
-Windows system printing requires the official ZDesigner v10 ZD421 ZPL driver at 203 or 300 dpi. Install it separately and select it in the setup page. [Zebra driver downloads](https://www.zebra.com/us/en/support-downloads/printer-software/printer-drivers.html)
+Windows system printing requires the official ZDesigner v10 ZD421 ZPL driver at 203 or 300 dpi. Install it separately and select it in the setup page. [Zebra driver downloads](https://www.zebra.com/us/en/support-downloads/printers/printer-drivers.html)
 
 On Linux, the setup page uses CUPS and the desktop PolicyKit agent to register the queue. The Wayland directory picker uses an XDG desktop portal.
 
