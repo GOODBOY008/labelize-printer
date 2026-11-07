@@ -1,6 +1,6 @@
 # Third-party notices
 
-Labelize Printer uses Labelize (MIT), GPUI and gpui-component (Apache-2.0),
+Labelize Printer uses Labelize (MIT), GPUI, gpui-component and gpui-component-assets (Apache-2.0),
 PAPPL 1.4.12 (Apache-2.0 with LLVM exception), and OpenSSL 3.5.9 (Apache-2.0).
 Native packages link CUPS and operating-system frameworks as system libraries.
 The native build patches PAPPL to preserve client raster headers and accept

@@ -5,7 +5,7 @@ mod ui;
 mod worker;
 
 use gpui::{prelude::*, *};
-use gpui_component::Root;
+use gpui_component::{Root, TitleBar};
 use labelize_printer_core::AppPaths;
 #[cfg(target_os = "linux")]
 use std::time::Duration;
@@ -41,14 +41,28 @@ fn main() -> anyhow::Result<()> {
         log::LevelFilter::Warn
     });
     let paths = AppPaths::discover()?;
-    Application::new().run(move |cx| {
+    let app = Application::new().with_assets(gpui_component_assets::Assets);
+    app.run(move |cx| {
         gpui_component::init(cx);
         gpui_component::Theme::change(gpui_component::ThemeMode::Light, None, cx);
         let font = branding::ui_font(cx);
         let theme = gpui_component::Theme::global_mut(cx);
         theme.font_family = font.family.clone();
+        theme.radius = px(8.);
+        theme.radius_lg = px(12.);
         theme.scrollbar_show = gpui_component::scroll::ScrollbarShow::Always;
-        theme.colors.primary = rgb(0x315efb).into();
+        theme.colors.background = rgb(ui::SURFACE).into();
+        theme.colors.foreground = rgb(ui::TEXT).into();
+        theme.colors.muted_foreground = rgb(ui::MUTED).into();
+        theme.colors.border = rgb(ui::BORDER).into();
+        theme.colors.input = rgb(ui::BORDER).into();
+        theme.colors.title_bar = rgb(0xffffff).into();
+        theme.colors.title_bar_border = rgb(0xffffff).into();
+        theme.colors.secondary = rgb(0xf0f3f9).into();
+        theme.colors.secondary_hover = rgb(0xe7edf6).into();
+        theme.colors.secondary_active = rgb(0xe6edff).into();
+        theme.colors.secondary_foreground = rgb(ui::TEXT).into();
+        theme.colors.primary = rgb(ui::ACCENT).into();
         theme.colors.primary_hover = rgb(0x254fe0).into();
         theme.colors.primary_active = rgb(0x2045c8).into();
         theme.colors.primary_foreground = rgb(0xffffff).into();
@@ -108,8 +122,9 @@ fn main() -> anyhow::Result<()> {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     titlebar: Some(TitlebarOptions {
                         title: Some("Labelize Printer".into()),
-                        ..Default::default()
+                        ..TitleBar::title_bar_options()
                     }),
+                    window_decorations: Some(WindowDecorations::Client),
                     window_min_size: Some(size(
                         bounds.size.width.min(px(480.0)),
                         bounds.size.height.min(px(360.0)),

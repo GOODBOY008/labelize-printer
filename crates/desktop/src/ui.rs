@@ -7,7 +7,7 @@ use gpui_component::{
     button::{Button, ButtonVariants},
     input::{Input, InputState},
     scroll::ScrollableElement,
-    Disableable, Selectable,
+    Disableable, Selectable, TitleBar,
 };
 use labelize_printer_core::{AppPaths, JobState, OutputFormat, Settings, Snapshot};
 use std::{
@@ -26,11 +26,11 @@ actions!(
     ]
 );
 
-const ACCENT: u32 = 0x315efb;
-const TEXT: u32 = 0x17243b;
-const MUTED: u32 = 0x57657a;
-const BORDER: u32 = 0xdde4ee;
-const SURFACE: u32 = 0xf4f6fa;
+pub(crate) const ACCENT: u32 = 0x315efb;
+pub(crate) const TEXT: u32 = 0x17243b;
+pub(crate) const MUTED: u32 = 0x57657a;
+pub(crate) const BORDER: u32 = 0xe0e6ef;
+pub(crate) const SURFACE: u32 = 0xf5f7fb;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Page {
@@ -473,20 +473,27 @@ impl PrinterApp {
         let logo = div()
             .flex()
             .items_center()
-            .gap_2()
-            .child(img(self.logo.clone()).size(px(38.)).flex_shrink_0())
+            .gap_3()
+            .child(img(self.logo.clone()).size(px(40.)).flex_shrink_0())
             .child(
                 div()
                     .flex()
                     .flex_col()
                     .child(
                         div()
-                            .font_weight(FontWeight::BOLD)
+                            .font_weight(FontWeight::SEMIBOLD)
                             .child("Labelize Printer"),
                     )
                     .child(div().text_xs().text_color(rgb(MUTED)).child("本地标签打印")),
             );
-        let mut nav = div().flex().flex_wrap().gap_1();
+        let mut nav = div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .p_1()
+            .rounded_lg()
+            .bg(rgb(SURFACE))
+            .when(compact, |this| this.w_full());
         for (index, page) in [Page::Setup, Page::Settings, Page::Jobs]
             .into_iter()
             .enumerate()
@@ -495,6 +502,9 @@ impl PrinterApp {
                 Button::new(("nav", index))
                     .ghost()
                     .selected(self.page == page)
+                    .text_sm()
+                    .font_weight(FontWeight::MEDIUM)
+                    .when(compact, |this| this.flex_1())
                     .label(page.title())
                     .on_click(
                         cx.listener(move |app, _, window, cx| app.change_page(page, window, cx)),
@@ -503,17 +513,25 @@ impl PrinterApp {
         }
         div()
             .flex()
+            .justify_center()
             .flex_shrink_0()
-            .px(padding)
-            .py_2()
-            .gap_2()
             .border_b_1()
             .border_color(rgb(BORDER))
             .bg(rgb(0xffffff))
-            .when(compact, |this| this.flex_col())
-            .when(!compact, |this| this.items_center().justify_between())
-            .child(logo)
-            .child(nav)
+            .child(
+                div()
+                    .flex()
+                    .w_full()
+                    .max_w(px(900.))
+                    .min_w_0()
+                    .px(padding)
+                    .py_3()
+                    .gap_3()
+                    .when(compact, |this| this.flex_col())
+                    .when(!compact, |this| this.items_center().justify_between())
+                    .child(logo)
+                    .child(nav),
+            )
     }
 
     fn refresh_button(&self, cx: &mut Context<Self>) -> Button {
@@ -926,13 +944,20 @@ impl PrinterApp {
             Page::Jobs => {}
         }
         div()
+            .flex()
+            .justify_center()
             .flex_shrink_0()
-            .px(padding)
-            .py_2()
             .bg(rgb(0xffffff))
             .border_t_1()
             .border_color(rgb(BORDER))
-            .child(actions)
+            .child(
+                div()
+                    .w_full()
+                    .max_w(px(900.))
+                    .px(padding)
+                    .py_3()
+                    .child(actions),
+            )
     }
 }
 
@@ -948,7 +973,7 @@ fn card(compact: bool) -> Div {
         .flex_col()
         .gap_4()
         .p(if compact { px(14.) } else { px(20.) })
-        .rounded_lg()
+        .rounded(px(12.))
         .bg(rgb(0xffffff))
         .border_1()
         .border_color(rgb(BORDER))
@@ -973,8 +998,9 @@ fn badge(text: &'static str, color: u32) -> Div {
         .flex_shrink_0()
         .px_2()
         .py_1()
-        .rounded_md()
-        .text_sm()
+        .rounded_full()
+        .text_xs()
+        .font_weight(FontWeight::MEDIUM)
         .text_color(rgb(color))
         .bg(rgb(0xedf1f7))
         .child(text)
@@ -1016,7 +1042,7 @@ impl Render for PrinterApp {
                     .child(
                         div()
                             .text_2xl()
-                            .font_weight(FontWeight::BOLD)
+                            .font_weight(FontWeight::SEMIBOLD)
                             .child(self.page.title()),
                     )
                     .child(
@@ -1079,7 +1105,7 @@ impl Render for PrinterApp {
             .flex_col()
             .bg(rgb(SURFACE))
             .font(self.font.clone())
-            .text_base()
+            .text_size(px(15.))
             .line_height(relative(1.45))
             .text_color(rgb(TEXT))
             .key_context("LabelizePrinter")
@@ -1097,6 +1123,14 @@ impl Render for PrinterApp {
             )
             .on_action(cx.listener(|app, _: &ScrollPageUp, _, cx| app.scroll_page(1., cx)))
             .on_action(cx.listener(|app, _: &ScrollPageDown, _, cx| app.scroll_page(-1., cx)))
+            .child(
+                TitleBar::new().child(
+                    div()
+                        .text_xs()
+                        .text_color(rgb(MUTED))
+                        .child("Labelize Printer"),
+                ),
+            )
             .child(self.header(compact, padding, cx))
             .child(content)
             .when(self.page != Page::Jobs, |this| {
