@@ -27,8 +27,14 @@ RequestExecutionLevel user
 !insertmacro MUI_LANGUAGE "English"
 Section "Labelize Printer"
   IfFileExists "$INSTDIR\labelize-printer-daemon.exe" 0 ready
-    ExecWait '"$INSTDIR\labelize-printer-daemon.exe" stop' $0
-    ${If} $0 != 0
+    ; Use the new client so an older executable with a missing runtime can be upgraded.
+    InitPluginsDir
+    SetOutPath "$PLUGINSDIR"
+    File "${BIN_DIR}\labelize-printer-daemon.exe"
+    ClearErrors
+    ExecWait '"$PLUGINSDIR\labelize-printer-daemon.exe" stop' $0
+    ${If} ${Errors}
+    ${OrIf} $0 != 0
       MessageBox MB_OK "Wait for active print jobs to finish before upgrading."
       Abort
     ${EndIf}

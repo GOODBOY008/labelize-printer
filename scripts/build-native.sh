@@ -20,16 +20,27 @@ assert hashlib.sha256(open(sys.argv[1], 'rb').read()).hexdigest() == '1684c4e064
 PY
 source_dir="$project_root/.cache/pappl-$version"
 if [[ ! -f "$source_dir/configure" ]]; then tar xzf "$archive" -C .cache; fi
-# PAPPL normally selects a printer canvas for 1-bit data. This virtual printer
-# must preserve the caller's raster header, including per-page size/resolution.
-# The adapter, unlike a physical printer driver, accepts and expands both 1/8-bit.
+# Preserve the client's canvas. Some CUPS filters send sRGB even for a
+# monochrome queue, so let the adapter normalize that specific input to gray.
 python3 - "$source_dir/pappl/job-process.c" <<'PY'
 import pathlib, sys
 p = pathlib.Path(sys.argv[1]); s = p.read_text()
-old = 'if (options->header.cupsBitsPerPixel >= 8 && header.cupsBitsPerPixel >= 8)'
-new = 'if (header.cupsBitsPerPixel == 1 || (options->header.cupsBitsPerPixel >= 8 && header.cupsBitsPerPixel >= 8))'
-assert old in s or new in s, 'PAPPL header patch no longer applies'
-if new not in s: p.write_text(s.replace(old, new))
+original = s
+header = '    options->header = header;'
+conditions = [
+    'options->header.cupsBitsPerPixel >= 8 && header.cupsBitsPerPixel >= 8',
+    'header.cupsBitsPerPixel == 1 || (options->header.cupsBitsPerPixel >= 8 && header.cupsBitsPerPixel >= 8)',
+]
+for condition in conditions:
+    s = s.replace(f'    if ({condition})\n  {header}', header)
+assert f'\n{header}' in s, 'PAPPL header patch no longer applies'
+old = 'if (header.cupsBitsPerPixel > 8 && !(printer->driver_data.color_supported & PAPPL_COLOR_MODE_COLOR))'
+new = ('if (header.cupsBitsPerPixel > 8 &&\n'
+       '        !(header.cupsBitsPerPixel == 24 && header.cupsColorSpace == CUPS_CSPACE_SRGB) &&\n'
+       '        !(printer->driver_data.color_supported & PAPPL_COLOR_MODE_COLOR))')
+assert old in s or new in s, 'PAPPL sRGB input patch no longer applies'
+s = s.replace(old, new)
+if s != original: p.write_text(s)
 PY
 native_flags="-O2"
 if [[ "$(uname -s)" == Darwin ]]; then

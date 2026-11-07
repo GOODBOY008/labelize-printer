@@ -155,7 +155,11 @@ with tempfile.TemporaryDirectory(prefix='labelize-smoke-') as temporary:
             print('PASS IPP manifest write failure leaves a failed task, not a stuck reception')
             fixture = root / '.cache' / 'raster-fixture'
             subprocess.run(['cc', str(root / 'native/ipp/fixture.c'), '-lcups', '-o', str(fixture)], check=True)
-            for mode, bits, copies, per_set, expected in [('pwg',8,2,None,4), ('pwg',1,1,None,2), ('urf',8,1,None,2), ('pwg',8,2,1,2)]:
+            cases = [
+                ('pwg',8,2,None,4), ('pwg',1,1,None,2), ('urf',8,1,None,2),
+                ('pwg',24,1,None,2), ('urf',24,1,None,2), ('pwg',8,2,1,2),
+            ]
+            for mode, bits, copies, per_set, expected in cases:
                 title = f'{mode}-{bits}-{copies}-{per_set}'
                 raster = work / 'fixture.ras'
                 subprocess.run([str(fixture), str(raster), mode, str(bits)], check=True)
@@ -169,7 +173,8 @@ with tempfile.TemporaryDirectory(prefix='labelize-smoke-') as temporary:
                 for i, page in enumerate(pages):
                     data = (state / 'jobs' / job['id'] / page['file']).read_bytes()
                     pixels = data.split(b'\n',3)[3]
-                    assert pixels[0] == (0 if bits == 1 or i % 2 == 0 else 64)
+                    expected_gray = (76, 150)[i % 2] if bits == 24 else (0, 64)[i % 2]
+                    assert pixels[0] == (0 if bits == 1 else expected_gray), (title, i, pixels[0])
                 print(f'PASS IPP {title}: {expected} pages, dimensions, order, polarity')
             ipp(settings['ipp_port'], 'truncated-raster', raster.read_bytes()[:-50], 'image/pwg-raster')
             job = eventually(lambda: finished('truncated-raster'))

@@ -94,8 +94,10 @@ static bool start_page(pappl_job_t *job, pappl_pr_options_t *options, pappl_devi
       h->cupsWidth > 32000 || h->cupsHeight > 32000 ||
       (uint64_t)h->cupsWidth * h->cupsHeight > MAX_PIXELS)
     return fail(job, data, "Raster exceeds the page count or canvas limit");
-  if ((h->cupsBitsPerPixel != 1 && h->cupsBitsPerPixel != 8) ||
-      (h->cupsColorSpace != CUPS_CSPACE_K && h->cupsColorSpace != CUPS_CSPACE_W && h->cupsColorSpace != CUPS_CSPACE_SW) ||
+  bool gray = (h->cupsBitsPerPixel == 1 || h->cupsBitsPerPixel == 8) &&
+              (h->cupsColorSpace == CUPS_CSPACE_K || h->cupsColorSpace == CUPS_CSPACE_W || h->cupsColorSpace == CUPS_CSPACE_SW);
+  bool srgb = h->cupsBitsPerPixel == 24 && h->cupsBitsPerColor == 8 && h->cupsColorSpace == CUPS_CSPACE_SRGB;
+  if ((!gray && !srgb) ||
       h->cupsColorOrder != CUPS_ORDER_CHUNKED || !h->HWResolution[0] || !h->HWResolution[1] ||
       h->cupsBytesPerLine < ((uint64_t)h->cupsWidth * h->cupsBitsPerPixel + 7) / 8)
     return fail(job, data, "Unsupported raster pixel format or resolution");
@@ -126,9 +128,16 @@ static bool write_line(pappl_job_t *job, pappl_pr_options_t *options, pappl_devi
   if (!data || data->error) return false;
   if (!data->file || y != data->rows || y >= data->height) return fail(job, data, "Unexpected raster row order");
   unsigned char pixels[32000];
-  for (unsigned x = 0; x < data->width; x++) {
-    unsigned char value = data->bits == 8 ? line[x] : ((line[x / 8] & (128 >> (x % 8))) ? 255 : 0);
-    pixels[x] = data->colorspace == CUPS_CSPACE_K ? 255 - value : value;
+  if (data->colorspace == CUPS_CSPACE_SRGB) {
+    for (unsigned x = 0; x < data->width; x++) {
+      const unsigned char *rgb = line + 3 * x;
+      pixels[x] = (299u * rgb[0] + 587u * rgb[1] + 114u * rgb[2] + 500u) / 1000u;
+    }
+  } else {
+    for (unsigned x = 0; x < data->width; x++) {
+      unsigned char value = data->bits == 8 ? line[x] : ((line[x / 8] & (128 >> (x % 8))) ? 255 : 0);
+      pixels[x] = data->colorspace == CUPS_CSPACE_K ? 255 - value : value;
+    }
   }
   if (fwrite(pixels, 1, data->width, data->file) != data->width) return fail(job, data, "Raster spool write failed (check free disk space)");
   data->rows++;

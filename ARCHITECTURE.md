@@ -8,8 +8,8 @@ Windows 应用交给官方 ZDesigner 生成 ZPL，系统 RAW 端口将字节发�
 
 macOS/Linux 的系统打印队列向 PAPPL 提交 PWG/Apple Raster。
 PAPPL 负责 IPP 生命周期与栅格协议解码。C 适配器负责检查尺寸、行数和格式，
-将 1/8 位 K/W/SW 像素统一为灰度 PGM；不缩放或旋转。内置 PAPPL 有一处固定补丁：
-1 位输入也保留客户页面头，而不是替换为默认打印机画布。
+将 1/8 位 K/W/SW 和 8 位每通道的 sRGB 像素统一为灰度 PGM，保留尺寸、方向和页序。
+内置 PAPPL 补丁保留客户端页面头，并接收 CUPS 为单色队列生成的 sRGB 栅格。
 
 系统栅格的 `job-pages-per-set` 表示客户端已经展开份数，适配器验证完整页数后保持原顺序。
 否则适配器展开 IPP `copies` 一次，并支持整份排序或逐页排序。

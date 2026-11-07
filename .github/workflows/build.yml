@@ -71,6 +71,15 @@ jobs:
           persist-credentials: false
       - run: rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal --no-self-update
       - run: cargo build --workspace --release --locked
+      - name: Check Windows runtime dependencies
+        run: |
+          $objdump = Join-Path $env:ProgramFiles 'LLVM\bin\llvm-objdump.exe'
+          foreach ($binary in @('labelize-printer', 'labelize-printer-daemon')) {
+            $imports = & $objdump -p "target\release\$binary.exe"
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            $runtime = $imports | Select-String 'DLL Name:\s+(vcruntime|msvcp|msvcr|concrt)[0-9][^\s]*\.dll'
+            if ($runtime) { throw "$binary needs a separate Visual C++ runtime ($runtime)" }
+          }
       - run: cargo test -p labelize-printer-core --release --locked
       - run: python scripts/smoke.py --profile release --skip-ipp
       - run: python scripts/collect-licenses.py

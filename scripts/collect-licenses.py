@@ -25,7 +25,7 @@ for source, name in [(root/'.cache/pappl-1.4.12/LICENSE','PAPPL-1.4.12.txt'),
                      (root/'vendor/labelize/THIRD_PARTY_LICENSES.md','Labelize-assets.md')]:
     if source.exists(): shutil.copyfile(source, out/name)
 (out/'INDEX.md').write_text('# Third-party notices\n\nGenerated from Cargo.lock and dependency sources present for this build.\n\n'
-    'PAPPL 1.4.12: Apache-2.0 with LLVM exception; bundled header-preservation patch is in scripts/build-native.sh. '
+    'PAPPL 1.4.12: Apache-2.0 with LLVM exception. Raster compatibility patches are in scripts/build-native.sh. '
     'OpenSSL 3.5.9: Apache-2.0. CUPS and operating-system frameworks are dynamically linked system libraries. '
     'ZDesigner is installed separately from Zebra and is not redistributed.\n\n'
     '| Dependency | License expression | Bundled notice files |\n|---|---|---|\n' + '\n'.join(sorted(rows)) + '\n',
