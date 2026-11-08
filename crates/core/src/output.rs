@@ -1,8 +1,7 @@
 use crate::{paths::atomic_write, *};
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use flate2::{write::ZlibEncoder, Compression};
 use image::GrayImage;
-use labelize::{DrawerOptions, OutputOptions, ZplParseOptions, ZplParser};
 use lopdf::{dictionary, Document, Object, Stream};
 use std::{
     fs,
@@ -18,7 +17,7 @@ pub struct RenderedPage {
     pub dpi_y: f64,
 }
 
-/// The only Labelize call site. Raster jobs never enter this branch.
+/// Commit rendered label documents or system raster pages through one output sink.
 pub fn render_job(paths: &AppPaths, job: &JobRecord) -> Result<OutputReceipt> {
     job.settings.validate()?;
     anyhow::ensure!(
@@ -78,47 +77,21 @@ pub fn render_job(paths: &AppPaths, job: &JobRecord) -> Result<OutputReceipt> {
                     fs::metadata(&file)?.len() <= MAX_INPUT_BYTES,
                     "ZPL exceeds 64 MiB"
                 );
-                let bytes = fs::read(file)?;
-                let labels = ZplParser::with_dpmm(job.settings.dpmm)
-                    .parse_with_options(
-                        &bytes,
-                        ZplParseOptions {
-                            use_declared_dimensions: true,
-                            max_labels: Some(MAX_PAGES),
-                            require_complete_formats: true,
-                        },
-                    )
-                    .map_err(anyhow::Error::msg)?;
-                if labels.is_empty() {
-                    bail!("The ZPL job did not contain any printable labels");
-                }
-                for label in labels {
-                    let width_mm = label.label_width_mm.unwrap_or(job.settings.width_mm);
-                    let height_mm = label.label_height_mm.unwrap_or(job.settings.height_mm);
-                    let drawer = DrawerOptions {
-                        label_width_mm: width_mm,
-                        label_height_mm: height_mm,
-                        dpmm: job.settings.dpmm,
-                        antialias: false,
-                        ..Default::default()
-                    };
-                    let png = labelize::render_label_with_output(
-                        &label,
-                        drawer,
-                        OutputOptions::default(),
-                        false,
-                    )?;
-                    let pixels =
-                        image::load_from_memory_with_format(&png, image::ImageFormat::Png)?
-                            .into_luma8();
-                    sink.push(RenderedPage {
-                        pixels,
-                        width_mm,
-                        height_mm,
-                        dpi_x: job.settings.dpmm as f64 * 25.4,
-                        dpi_y: job.settings.dpmm as f64 * 25.4,
-                    })?;
-                }
+                crate::document::render(
+                    &crate::document::read_input(&file)?,
+                    crate::document::DocumentKind::Zpl,
+                    &job.settings,
+                    |page| sink.push(page),
+                )?;
+            }
+            PrintJobInput::LabelFile { file, language } => {
+                let file = job_file(paths, &job.id, file)?;
+                crate::document::render(
+                    &crate::document::read_input(&file)?,
+                    *language,
+                    &job.settings,
+                    |page| sink.push(page),
+                )?;
             }
             PrintJobInput::RasterPages { pages } => {
                 anyhow::ensure!(

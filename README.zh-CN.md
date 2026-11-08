@@ -2,12 +2,12 @@
 
 [English](README.md)
 
-独立的 Rust + GPUI 本地虚拟打印机，复用 Labelize，将打印任务保存为多页 PDF 或逐页 PNG。
+独立的 Rust + GPUI 本地虚拟打印机，复用 Labelize，支持打开标签文件和可视化设计，将标签或系统打印任务保存为多页 PDF 或逐页 PNG。
 首版面向当前登录用户、单台计算机、单队列。无需云端服务。
 
 ## 上游项目 Labelize
 
-Labelize 是开源 Rust 渲染引擎，可将 ZPL、EPL、TSPL/TSC、CPCL 和 DPL 转为 PNG 或 PDF。Labelize Printer 使用其 Rust 库处理 ZPL 任务。上游还提供命令行、HTTP API、WebAssembly 和 Android 库。[Labelize 源码与文档](https://github.com/GOODBOY008/labelize)
+Labelize 是开源 Rust 渲染引擎，可将 ZPL、EPL、TSPL/TSC、CPCL 和 DPL 转为 PNG 或 PDF。Labelize Printer 使用其 Rust 库处理这些格式的标签文件。上游还提供命令行、HTTP API、WebAssembly 和 Android 库。[Labelize 源码与文档](https://github.com/GOODBOY008/labelize)
 
 ## 下载安装
 
@@ -174,3 +174,18 @@ RAW 正常 EOF 才提交；TCP 分包、换行、单个 `^XZ` 均不代表完整
 “传输结束”和“文件已保存”是两个状态，只有最终文件提交成功才显示已保存。
 
 公开发布签名、公证、网络共享、多用户隔离队列、跨任务资源缓存、矢量 PDF 不在本版范围内。
+
+## 标签文件与可视化设计
+
+工作台目前仅在开发版本中提供，已发布的 v0.1.2 安装包尚未包含此功能。
+
+在「标签工作台」点击「打开文件」，可读取 ZPL、EPL、TSPL/TSC、CPCL、DPL、PRN 文件；也可将文件拖入工作台，或把文件路径作为桌面程序的启动参数。扩展名和内容用于识别格式，可在格式按钮中手动调整。
+
+- UTF-8 文本可编辑源码，点击「更新预览」后逐页查看。包含二进制、控制字节或超过 1 MiB 的文件保持只读，按原始字节预览和输出。
+- 「保存 PDF」生成一份多页栅格 PDF，「保存 PNG」逐页输出。任务进入原有后台队列，可在「最近任务」查看、打开文件或重试。工作台的目录、尺寸和分辨率只用于这次任务，不修改系统打印队列设置。
+- 「新建设计」支持文字、Code 128、二维码、矩形和图片。可通过对象列表或画布选择对象，拖动位置，编辑毫米尺寸、内容、字号和边框，使用「更新预览」应用属性修改，支持撤销与重做。
+- 「另存标签」将设计保存为 `.labelize.json`，图片和导入字体随模板保存，之后可重新打开继续编辑。中文请导入支持相应字符的 TrueType/OpenType 字体（不超过 32 MiB）。缺少字符、文字溢出或条码尺寸过小时会报错。PNG/JPEG 图片按白色背景合成后输出单色。
+
+已有打印指令作为源码打开，不反向拆解为设计器对象。这一版只保存 PDF/PNG，不直接发送到实体打印机，也不把设计模板导出为 ZPL/EPL 等指令。支持的命令、字体行为以及非 ZPL 份数语义与内嵌 Labelize 一致；打印程序集成目前只展开 ZPL 的 `^PQ` 份数。
+
+快捷键：Cmd/Ctrl+O 打开文件，Cmd/Ctrl+N 新建设计，Cmd/Ctrl+S 保存文件或模板，Cmd/Ctrl+4 打开工作台。关闭或替换未保存文档前会提示。预览使用独立渲染进程，全部页面合计最多 128 Mi 像素；正式输出继续使用原有任务限制。

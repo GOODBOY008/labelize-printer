@@ -52,12 +52,13 @@ IPP 报告 aborted。PAPPL 崩溃后由后台重启，接收中的任务会失�
 | 类型 | 含义 |
 |---|---|
 | `PrintJobInput::Zpl` | 私有暂存文件，分辨率/缺省尺寸在任务设置快照中 |
+| `PrintJobInput::LabelFile` | 文件语言或设计模板类型、私有输入快照，使用独立的任务设置 |
 | `PrintJobInput::RasterPages` | 最终页序，文件/尺寸/分辨率逐页保留 |
 | `RenderedPage` | 灰度像素、宽高、物理尺寸及 X/Y 分辨率 |
 | `JobRecord` | UUID、设置快照、输入、状态、输出、诊断 |
 | `OutputReceipt` | 已原子提交的文件与页数，支持完成阶段恢复 |
 
-`core::output` 是唯一的 Labelize 调用位置。ZPL 使用 `parse_with_options` 开启
+`core::document` 负责标签文件解析与渲染，`core::design` 将可视化设计和 Labelize 条码编码结果转换为中立 IR；`core::output` 统一保存文件。ZPL 使用 `parse_with_options` 开启
 逐标签尺寸、完整格式检查和 1000 页上限，缺省 `parse` 行为仍与 Labelize 原 API 兼容。
 `^LL` 在首个 `^FS` 前生效，之后的设置影响下一标签；有效 `^PW`/`^LL` 优先于缺省纸张。
 
@@ -91,3 +92,30 @@ Windows 登录计划任务、macOS LaunchAgent、Linux 用户 systemd 提供下�
 - [PAPPL 1.4.12 源码](https://github.com/michaelrsweet/pappl/releases/tag/v1.4.12)
 - [Zebra ZPL Programming Guide](https://www.zebra.com/content/dam/support-dam/en/documentation/unrestricted/guide/software/zpl-zbi2-pg-en.pdf)
 - [OpenSSL 下载与版本](https://www.openssl-library.org/source/)
+
+## 桌面标签工作台
+
+工作台新增 `PrintJobInput::LabelFile`，保存文件类型、输入快照和独立的任务设置。
+`SubmitDocument` 将输入复制进任务目录后才返回，输出仍在后台独立 worker 中执行。
+原有 `Zpl` 序列化格式与 RAW 接收行为保留，系统栅格路径不受影响。
+
+`core::document::render` 同时用于预览与正式输出，统一逐标签尺寸、页序和画布限制。
+预览由桌面端启动无 GPU 的 daemon `preview` 子命令，设置 300 秒超时，写 PNG 和页信息。
+临时预览目录由桌面端持有，替换或退出时清理；GUI 每次只加载当前页。
+预览总像素限制为 128 Mi，正式输出继续受单页 16 Mi 像素、1000 页和 64 MiB 输入限制。
+
+设计格式版本为 1，最多 100 个对象。毫米几何、内容、图片及字体可序列化为 `.labelize.json`。
+图片合成白底，条码与二维码保留整数模块和静区；文字缺字、溢出和越界对象拒绝输出。
+预览和输出共用这些规则，设计不会被重新转换为 ZPL。指令文件不自动重建为设计对象。
+
+```mermaid
+flowchart LR
+  F[标签文件] --> P[Labelize 语言解析器]
+  D[设计模板] --> IR[core::design 中立 IR]
+  P --> R[Labelize 渲染]
+  IR --> R
+  R --> V[临时 PNG 预览]
+  R --> O[RenderedPage · 后台原子保存 PDF/PNG]
+  S[系统栅格] --> A[栅格适配]
+  A --> O
+```

@@ -35,13 +35,20 @@ struct Cli {
 #[derive(Subcommand)]
 enum Action {
     Serve,
+    #[command(hide = true)]
+    Preview {
+        #[arg(long)]
+        request: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
     Status,
     Refresh,
     Submit {
         path: PathBuf,
         #[arg(long)]
         wait: bool,
-        #[arg(long, default_value = "ZPL print job")]
+        #[arg(long, default_value = "Label print job")]
         title: String,
     },
     IngestRaster {
@@ -100,6 +107,12 @@ fn run() -> Result<()> {
     };
     let (request, wait) = match cli.command {
         Action::Serve => return serve(paths),
+        Action::Preview { request, output } => {
+            let request: document::PreviewRequest =
+                serde_json::from_slice(&document::read_input(&request)?)?;
+            document::preview(&request, &output)?;
+            return Ok(());
+        }
         Action::Worker { id } => return worker(&paths, &id),
         Action::BeginRaster { title, source } => {
             let job: JobRecord =
@@ -109,13 +122,24 @@ fn run() -> Result<()> {
         }
         Action::Status => (Request::Status, false),
         Action::Refresh => (Request::RefreshPlatform, false),
-        Action::Submit { path, wait, title } => (
-            Request::SubmitZpl {
-                path: fs::canonicalize(path)?,
-                title,
-            },
-            wait,
-        ),
+        Action::Submit { path, wait, title } => {
+            let path = fs::canonicalize(path)?;
+            let kind = document::DocumentKind::detect(&path, &document::read_input(&path)?);
+            if kind == document::DocumentKind::Zpl {
+                (Request::SubmitZpl { path, title }, wait)
+            } else {
+                let snapshot: Snapshot = ipc::request(&paths, Request::Status)?.decode()?;
+                (
+                    Request::SubmitDocument {
+                        path,
+                        title,
+                        language: kind,
+                        settings: snapshot.settings,
+                    },
+                    wait,
+                )
+            }
+        }
         Action::IngestRaster { manifest, wait } => (
             Request::SubmitRaster {
                 manifest: fs::canonicalize(manifest)?,
@@ -391,6 +415,12 @@ fn dispatch(request: Request, service: &Service) -> Result<serde_json::Value> {
         Request::SubmitZpl { path, title } => {
             serde_json::to_value(store.import_zpl(&path, &title, "local-zpl")?)?
         }
+        Request::SubmitDocument {
+            path,
+            title,
+            language,
+            settings,
+        } => serde_json::to_value(store.import_document(&path, &title, language, settings)?)?,
         Request::SubmitRaster { manifest } => {
             serde_json::to_value(store.import_raster(&manifest)?)?
         }

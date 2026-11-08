@@ -3536,6 +3536,7 @@ dependencies = [
  "raw-window-handle",
  "serde",
  "serde_json",
+ "tempfile",
  "windows 0.61.3",
 ]
 
@@ -3543,12 +3544,15 @@ dependencies = [
 name = "labelize-printer-core"
 version = "0.1.2"
 dependencies = [
+ "ab_glyph",
  "anyhow",
+ "base64 0.22.1",
  "chrono",
  "directories",
  "flate2",
  "fs2",
  "image",
+ "imageproc",
  "interprocess",
  "labelize",
  "libc",

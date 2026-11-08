@@ -157,6 +157,54 @@ impl Store {
         }
         Ok(job)
     }
+    /// Snapshot document options per job without changing the queue settings.
+    pub fn import_document(
+        &self,
+        path: &Path,
+        title: &str,
+        language: crate::document::DocumentKind,
+        settings: Settings,
+    ) -> Result<JobRecord> {
+        settings.validate()?;
+        let metadata = fs::metadata(path).context("Cannot read label input")?;
+        anyhow::ensure!(
+            metadata.is_file() && metadata.len() > 0 && metadata.len() <= MAX_INPUT_BYTES,
+            "Label input must be a regular file of 1 byte to 64 MiB"
+        );
+        let mut job = self.create(
+            title,
+            "document",
+            PrintJobInput::LabelFile {
+                file: "input.label".into(),
+                language,
+            },
+            JobState::Receiving,
+        )?;
+        job.settings = settings;
+        let result = (|| -> Result<()> {
+            copy_bounded(
+                path,
+                &self.paths.job_dir(&job.id)?.join("input.label"),
+                MAX_INPUT_BYTES,
+            )?;
+            anyhow::ensure!(
+                fs::metadata(self.paths.job_dir(&job.id)?.join("input.label"))?.len() > 0,
+                "Empty document"
+            );
+            job.transport_complete = true;
+            job.state = JobState::Queued;
+            self.put(&job)
+        })();
+        if let Err(error) = result {
+            self.transition(
+                &job.id,
+                JobState::Failed,
+                Some(format!("Document import failed: {error:#}")),
+            )?;
+            return Err(error);
+        }
+        Ok(job)
+    }
     pub fn import_raster(&self, manifest_path: &Path) -> Result<JobRecord> {
         let data = fs::read(manifest_path)?;
         if data.len() > 1024 * 1024 {

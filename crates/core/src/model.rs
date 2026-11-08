@@ -120,8 +120,16 @@ pub struct RasterManifest {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PrintJobInput {
-    Zpl { file: PathBuf },
-    RasterPages { pages: Vec<RasterPage> },
+    Zpl {
+        file: PathBuf,
+    },
+    LabelFile {
+        file: PathBuf,
+        language: crate::document::DocumentKind,
+    },
+    RasterPages {
+        pages: Vec<RasterPage>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -181,13 +189,36 @@ pub struct Snapshot {
 pub enum Request {
     Status,
     RefreshPlatform,
-    SaveSettings { settings: Settings },
-    SubmitZpl { path: PathBuf, title: String },
-    SubmitRaster { manifest: PathBuf },
-    BeginRaster { title: String, source: String },
-    AbortRaster { id: String, error: String },
-    Job { id: String },
-    Retry { id: String },
+    SaveSettings {
+        settings: Settings,
+    },
+    SubmitZpl {
+        path: PathBuf,
+        title: String,
+    },
+    SubmitDocument {
+        path: PathBuf,
+        title: String,
+        language: crate::document::DocumentKind,
+        settings: Settings,
+    },
+    SubmitRaster {
+        manifest: PathBuf,
+    },
+    BeginRaster {
+        title: String,
+        source: String,
+    },
+    AbortRaster {
+        id: String,
+        error: String,
+    },
+    Job {
+        id: String,
+    },
+    Retry {
+        id: String,
+    },
     TestPrint,
     Install,
     Uninstall,

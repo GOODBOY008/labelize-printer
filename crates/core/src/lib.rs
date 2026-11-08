@@ -1,3 +1,5 @@
+pub mod design;
+pub mod document;
 pub mod ipc;
 pub mod model;
 pub mod output;

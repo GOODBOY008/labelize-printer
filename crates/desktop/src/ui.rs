@@ -19,6 +19,10 @@ use std::{
 actions!(
     labelize_printer,
     [
+        ShowStudio,
+        OpenLabel,
+        NewLabel,
+        SaveLabel,
         ShowSetup,
         ShowSettings,
         ShowJobs,
@@ -35,6 +39,7 @@ pub(crate) const SURFACE: u32 = 0xf5f7fb;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Page {
+    Studio,
     Setup,
     Settings,
     Jobs,
@@ -43,6 +48,7 @@ enum Page {
 impl Page {
     fn title(self, language: Language) -> &'static str {
         match self {
+            Self::Studio => language.text(Text::Studio),
             Self::Setup => language.text(Text::Setup),
             Self::Settings => language.text(Text::Settings),
             Self::Jobs => language.text(Text::Jobs),
@@ -51,6 +57,7 @@ impl Page {
 
     fn description(self, language: Language) -> &'static str {
         match self {
+            Self::Studio => language.text(Text::StudioDescription),
             Self::Setup => language.text(Text::SetupDescription),
             Self::Settings => language.text(Text::SettingsDescription),
             Self::Jobs => language.text(Text::JobsDescription),
@@ -59,6 +66,7 @@ impl Page {
 }
 
 pub struct PrinterApp {
+    studio: Entity<crate::studio::Studio>,
     page: Page,
     focus: FocusHandle,
     scroll: ScrollHandle,
@@ -113,6 +121,9 @@ impl PrinterApp {
             .detach();
             state
         };
+        let studio = cx
+            .new(|cx| crate::studio::Studio::new(paths.clone(), preferences.language, window, cx));
+        cx.observe(&studio, |_, _, cx| cx.notify()).detach();
         let (commands, events) = worker::spawn(paths);
         cx.spawn_in(window, async move |this, cx| {
             while let Ok(event) = events.recv().await {
@@ -128,7 +139,8 @@ impl PrinterApp {
         let focus = cx.focus_handle();
         focus.focus(window);
         Self {
-            page: Page::Setup,
+            studio,
+            page: Page::Studio,
             focus,
             scroll: ScrollHandle::default(),
             logo: branding::logo(),
@@ -150,6 +162,16 @@ impl PrinterApp {
         }
     }
 
+    pub fn request_close(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        self.studio
+            .update(cx, |studio, cx| studio.request_close(window, cx))
+    }
+    pub fn open_document(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        self.change_page(Page::Studio, window, cx);
+        self.studio
+            .update(cx, |studio, cx| studio.open_path(path, window, cx));
+    }
+
     fn text(&self, text: Text) -> &'static str {
         self.preferences.language.text(text)
     }
@@ -162,6 +184,10 @@ impl PrinterApp {
             Ok(()) => {
                 self.preferences = preferences;
                 crate::apply_language(self.preferences.language, cx);
+                self.studio.update(cx, |studio, cx| {
+                    studio.language = self.preferences.language;
+                    cx.notify();
+                });
                 self.notice = None;
                 window.refresh();
             }
@@ -223,6 +249,9 @@ impl PrinterApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.studio.update(cx, |studio, cx| {
+            studio.configure(&snapshot.settings, window, cx)
+        });
         let first = self.snapshot.is_none();
         if first && self.page == Page::Setup && snapshot.settings.setup_complete {
             self.change_page(Page::Jobs, window, cx);
@@ -540,7 +569,7 @@ impl PrinterApp {
             .rounded_lg()
             .bg(rgb(SURFACE))
             .when(compact, |this| this.w_full());
-        for (index, page) in [Page::Setup, Page::Settings, Page::Jobs]
+        for (index, page) in [Page::Studio, Page::Setup, Page::Settings, Page::Jobs]
             .into_iter()
             .enumerate()
         {
@@ -568,7 +597,11 @@ impl PrinterApp {
                 div()
                     .flex()
                     .w_full()
-                    .max_w(px(900.))
+                    .max_w(px(if self.page == Page::Studio {
+                        1240.
+                    } else {
+                        900.
+                    }))
                     .min_w_0()
                     .px(padding)
                     .py_3()
@@ -997,7 +1030,7 @@ impl PrinterApp {
                             ),
                     );
             }
-            Page::Jobs => {}
+            Page::Studio | Page::Jobs => {}
         }
         div()
             .flex()
@@ -1009,7 +1042,11 @@ impl PrinterApp {
             .child(
                 div()
                     .w_full()
-                    .max_w(px(900.))
+                    .max_w(px(if self.page == Page::Studio {
+                        1240.
+                    } else {
+                        900.
+                    }))
                     .px(padding)
                     .py_3()
                     .child(actions),
@@ -1075,16 +1112,21 @@ fn banner(text: String, error: bool) -> Div {
 
 impl Render for PrinterApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let compact = window.viewport_size().width < px(670.);
+        let compact = window.viewport_size().width < px(850.);
         let padding = if compact { px(16.) } else { px(24.) };
         let content = match self.page {
+            Page::Studio => self.studio.clone().into_any_element(),
             Page::Setup => self.setup(compact, cx).into_any_element(),
             Page::Settings => self.settings(compact, cx).into_any_element(),
             Page::Jobs => self.jobs(compact, cx).into_any_element(),
         };
         let mut body = div()
             .w_full()
-            .max_w(px(900.))
+            .max_w(px(if self.page == Page::Studio {
+                1240.
+            } else {
+                900.
+            }))
             .min_w_0()
             .p(padding)
             .flex()
@@ -1166,6 +1208,26 @@ impl Render for PrinterApp {
             .text_color(rgb(TEXT))
             .key_context("LabelizePrinter")
             .track_focus(&self.focus)
+            .on_action(cx.listener(|app, _: &crate::Quit, window, cx| {
+                if app.request_close(window, cx) {
+                    cx.quit();
+                }
+            }))
+            .on_action(cx.listener(|app, _: &ShowStudio, window, cx| {
+                app.change_page(Page::Studio, window, cx)
+            }))
+            .on_action(cx.listener(|app, _: &OpenLabel, window, cx| {
+                app.change_page(Page::Studio, window, cx);
+                app.studio.update(cx, |s, cx| s.open(window, cx));
+            }))
+            .on_action(cx.listener(|app, _: &NewLabel, window, cx| {
+                app.change_page(Page::Studio, window, cx);
+                app.studio.update(cx, |s, cx| s.new_design(window, cx));
+            }))
+            .on_action(cx.listener(|app, _: &SaveLabel, window, cx| {
+                app.change_page(Page::Studio, window, cx);
+                app.studio.update(cx, |s, cx| s.save(window, cx));
+            }))
             .on_action(cx.listener(|app, _: &ShowSetup, window, cx| {
                 app.change_page(Page::Setup, window, cx)
             }))
@@ -1210,7 +1272,7 @@ impl Render for PrinterApp {
             )
             .child(self.header(compact, padding, cx))
             .child(content)
-            .when(self.page != Page::Jobs, |this| {
+            .when(matches!(self.page, Page::Setup | Page::Settings), |this| {
                 this.child(self.footer(padding, cx))
             })
     }

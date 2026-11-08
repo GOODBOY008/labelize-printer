@@ -63,6 +63,8 @@ impl Language {
 
     pub fn text(self, text: Text) -> &'static str {
         let (chinese, english) = match text {
+            Text::Studio => ("标签工作台", "Labels"),
+            Text::StudioDescription => ("打开、编辑和预览标签文件，设计标签并保存 PDF / PNG。", "Open, edit and preview label files, design labels and save PDF / PNG."),
             Text::Setup => ("安装向导", "Setup"),
             Text::Settings => ("输出设置", "Output settings"),
             Text::Jobs => ("最近任务", "Recent jobs"),
@@ -157,6 +159,8 @@ impl Language {
 // The catalog also includes messages used only by the Windows setup page.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub enum Text {
+    Studio,
+    StudioDescription,
     Setup,
     Settings,
     Jobs,

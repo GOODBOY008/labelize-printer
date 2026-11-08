@@ -5,13 +5,13 @@
 [![Build and package](https://github.com/GOODBOY008/labelize-printer/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/GOODBOY008/labelize-printer/actions/workflows/build.yml)
 [简体中文](README.zh-CN.md)
 
-Labelize Printer is a local virtual printer built with Rust and GPUI. Select it in the system print dialog or submit an existing ZPL file. Each job saves as one multipage PDF or one PNG per page.
+Labelize Printer is a local virtual printer built with Rust and GPUI. Select it in the system print dialog, open a label file, or create a label design. Each job saves as one multipage PDF or one PNG per page.
 
-The desktop app sets up the print queue, manages output settings, and shows recent jobs. A per-user background process keeps accepting jobs after you close the window.
+The desktop app opens label files, provides a visual label designer, sets up the print queue, manages output settings, and shows recent jobs. A per-user background process keeps accepting jobs after you close the window.
 
 ## Labelize rendering engine
 
-Labelize is an open-source Rust engine that renders ZPL, EPL, TSPL/TSC, CPCL, and DPL to PNG and PDF. Labelize Printer embeds its Rust library for ZPL jobs. Labelize is also available as a CLI, HTTP service, WebAssembly package, and Android library. [Labelize source and documentation](https://github.com/GOODBOY008/labelize)
+Labelize is an open-source Rust engine that renders ZPL, EPL, TSPL/TSC, CPCL, and DPL to PNG and PDF. Labelize Printer embeds its Rust library for ZPL, EPL, TSPL/TSC, CPCL, and DPL files. Labelize is also available as a CLI, HTTP service, WebAssembly package, and Android library. [Labelize source and documentation](https://github.com/GOODBOY008/labelize)
 
 ## Install
 
@@ -46,6 +46,21 @@ On Linux, the setup page uses CUPS and the desktop PolicyKit agent to register t
 
 Development builds are available through GitHub Actions. [Build and package](https://github.com/GOODBOY008/labelize-printer/actions/workflows/build.yml)
 
+## Label files and visual design
+
+This workspace is available in development builds; it is not included in the published v0.1.2 installers.
+
+The **Labels** workspace opens `.zpl`, `.epl`, `.tspl`/`.tsc`, `.cpcl`, `.dpl`, and `.prn` files. Use **Open file**, drag a file into the workspace, or pass its path to the desktop executable. Known extensions select the language; ambiguous files are detected by content, and the language buttons let you override it.
+
+- Edit UTF-8 source, update the preview, and step through every rendered page. Binary/control-byte files and files over 1 MiB stay read-only and retain their original bytes.
+- **Save PDF** creates one multipage raster PDF; **Save PNG** creates one file per page. Both use the same pipeline and dimensions as preview and appear in Recent jobs. The output folder and default dimensions in Labels apply to that job without modifying the system queue's settings.
+- **New design** creates a visual template with text, Code 128, QR codes, rectangles, and images. Select objects on the canvas or in the object list, drag to move, and edit their millimetre positions and sizes. Use Update preview to apply property edits. Undo/redo restores design changes.
+- **Save label as** stores editable designs as `.labelize.json`, including images and imported fonts. Open the template later to continue editing. For CJK text, import a compatible TrueType/OpenType font (up to 32 MiB). Missing glyphs and overflowing text are reported instead of silently creating an incomplete label. PNG/JPEG images are composited over white and rendered monochrome.
+
+The designer creates new templates. Existing printer commands remain source documents; importing them does not reconstruct editable design objects. Output currently saves PDF/PNG; it does not send directly to physical printers or export a design to printer command languages. Supported commands, font behavior, and non-ZPL copy handling follow the embedded Labelize engine; only ZPL `^PQ` copies are expanded by the printer integration.
+
+Shortcuts: **Cmd/Ctrl+O** opens a label, **Cmd/Ctrl+N** creates a design, **Cmd/Ctrl+S** saves a label/template, and **Cmd/Ctrl+4** opens Labels. Closing or replacing an edited document prompts before discarding changes. Preview runs in an isolated renderer process and is capped at 128 Mi pixels across all pages; full output retains the existing job limits.
+
 ## How printing works
 
 - **ZPL** from ZDesigner or a local submission is parsed and rendered by Labelize. The renderer handles label sizes and copy counts in the job.
@@ -71,7 +86,7 @@ bash scripts/build-openssl.sh
 bash scripts/build-native.sh
 ```
 
-The daemon also accepts self-contained ZPL jobs from the command line while the background process is running.
+The daemon also accepts self-contained label files and `.labelize.json` templates from the command line while the background process is running.
 
 ```sh
 target/debug/labelize-printer-daemon submit /absolute/path/to/label.zpl --wait

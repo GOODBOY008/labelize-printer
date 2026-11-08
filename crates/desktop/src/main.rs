@@ -2,6 +2,8 @@
 
 mod branding;
 mod i18n;
+mod studio;
+mod studio_worker;
 mod ui;
 mod worker;
 
@@ -11,7 +13,10 @@ use i18n::{Language, Preferences, Text};
 use labelize_printer_core::AppPaths;
 #[cfg(target_os = "linux")]
 use std::time::Duration;
-use ui::{PrinterApp, ScrollPageDown, ScrollPageUp, ShowJobs, ShowSettings, ShowSetup};
+use ui::{
+    NewLabel, OpenLabel, PrinterApp, SaveLabel, ScrollPageDown, ScrollPageUp, ShowJobs,
+    ShowSettings, ShowSetup, ShowStudio,
+};
 
 actions!(labelize_printer, [Quit]);
 
@@ -81,7 +86,6 @@ fn main() -> anyhow::Result<()> {
         theme.colors.primary_hover = rgb(0x254fe0).into();
         theme.colors.primary_active = rgb(0x2045c8).into();
         theme.colors.primary_foreground = rgb(0xffffff).into();
-        cx.on_action(|_: &Quit, cx| cx.quit());
         let modifier = if cfg!(target_os = "macos") {
             "cmd"
         } else {
@@ -89,6 +93,14 @@ fn main() -> anyhow::Result<()> {
         };
         cx.bind_keys([
             KeyBinding::new(&format!("{modifier}-q"), Quit, None),
+            KeyBinding::new(
+                &format!("{modifier}-4"),
+                ShowStudio,
+                Some("LabelizePrinter"),
+            ),
+            KeyBinding::new(&format!("{modifier}-o"), OpenLabel, Some("LabelizePrinter")),
+            KeyBinding::new(&format!("{modifier}-n"), NewLabel, Some("LabelizePrinter")),
+            KeyBinding::new(&format!("{modifier}-s"), SaveLabel, Some("LabelizePrinter")),
             KeyBinding::new(&format!("{modifier}-1"), ShowSetup, Some("LabelizePrinter")),
             KeyBinding::new(
                 &format!("{modifier}-2"),
@@ -147,6 +159,18 @@ fn main() -> anyhow::Result<()> {
                     #[cfg(windows)]
                     branding::set_window_icon(window);
                     let view = cx.new(|cx| PrinterApp::new(paths, font, preferences, window, cx));
+                    let weak = view.downgrade();
+                    window.on_window_should_close(cx, move |window, cx| {
+                        weak.update(cx, |app, cx| app.request_close(window, cx))
+                            .unwrap_or(true)
+                    });
+                    if let Some(path) = std::env::args_os()
+                        .nth(1)
+                        .map(std::path::PathBuf::from)
+                        .filter(|p| p.is_file())
+                    {
+                        view.update(cx, |app, cx| app.open_document(path, window, cx));
+                    }
                     // Root owns an erased AnyView. Explicitly invalidate the window
                     // when its child model changes, including IPC updates.
                     cx.observe(&view, |_, cx| cx.refresh_windows()).detach();
