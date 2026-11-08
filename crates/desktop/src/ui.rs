@@ -10,7 +10,9 @@ use gpui_component::{
     scroll::ScrollableElement,
     Disableable, Selectable, Sizable, TitleBar,
 };
-use labelize_printer_core::{AppPaths, JobState, OutputFormat, Settings, Snapshot};
+use labelize_printer_core::{
+    document::DocumentKind, AppPaths, JobState, OutputFormat, PrintJobInput, Settings, Snapshot,
+};
 use std::{
     path::{Path, PathBuf},
     sync::{mpsc, Arc},
@@ -891,12 +893,18 @@ impl PrinterApp {
                 JobState::Saved => (self.text(Text::Saved), 0x17603d),
                 JobState::Failed => (self.text(Text::Failed), 0xa22a34),
             };
-            let source = if job.source.starts_with("ipp:") {
-                self.text(Text::SystemPrint)
-            } else if job.source == "test" {
+            let source = if job.source == "test" {
                 self.text(Text::TestSource)
             } else {
-                "ZPL"
+                match &job.input {
+                    PrintJobInput::Zpl { .. } => "ZPL",
+                    PrintJobInput::LabelFile {
+                        language: DocumentKind::Design,
+                        ..
+                    } => self.text(Text::DesignSource),
+                    PrintJobInput::LabelFile { language, .. } => language.name(),
+                    PrintJobInput::RasterPages { .. } => self.text(Text::SystemPrint),
+                }
             };
             let time = chrono::DateTime::parse_from_rfc3339(&job.created_at)
                 .map(|time| {
