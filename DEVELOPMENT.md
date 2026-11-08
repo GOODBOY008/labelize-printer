@@ -71,7 +71,7 @@ target/debug/labelize-printer-daemon job TASK_UUID
 target/debug/labelize-printer-daemon retry TASK_UUID --wait
 ```
 
-Current `main` accepts ZPL, EPL, TSPL/TSC, CPCL, DPL, and `.labelize.json` templates through `submit`. The desktop executable can also take a label file as its first argument.
+Since v0.2.0, the daemon accepts ZPL, EPL, TSPL/TSC, CPCL, DPL, and `.labelize.json` templates through `submit`. The desktop executable can also take a label file as its first argument.
 
 | Command | Behavior |
 | --- | --- |

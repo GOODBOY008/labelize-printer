@@ -3521,7 +3521,7 @@ dependencies = [
 
 [[package]]
 name = "labelize-printer"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-channel 2.5.0",
@@ -3542,7 +3542,7 @@ dependencies = [
 
 [[package]]
 name = "labelize-printer-core"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "ab_glyph",
  "anyhow",
@@ -3568,7 +3568,7 @@ dependencies = [
 
 [[package]]
 name = "labelize-printer-daemon"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",

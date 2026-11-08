@@ -12,7 +12,7 @@ Labelize Printer is a desktop label workspace and local virtual printer for Wind
 
 It uses the [Labelize rendering engine](https://github.com/GOODBOY008/labelize) to parse and render printer-language files. The desktop app adds printer setup, output settings, job history, and a visual label designer. Labelize itself is also available as a library, CLI, HTTP service, WebAssembly package, and Android library.
 
-> **Release status:** [v0.1.2](https://github.com/GOODBOY008/labelize-printer/releases/tag/v0.1.2) includes virtual printing and English/Simplified Chinese interface switching. The **Labels** workspace, direct multi-format file opening, and visual designer are available on `main` and are not yet included in a published release. See the [acceptance record](ACCEPTANCE.md) for verified environments and remaining checks.
+> **New in v0.2.0:** The **Labels** workspace opens printer-language files, previews every page, and provides a visual label designer with portable templates. Save PDF/PNG through the same background service as the virtual printer. See the [acceptance record](ACCEPTANCE.md) for verified environments and remaining checks.
 
 ## What you can do
 
@@ -20,9 +20,9 @@ It uses the [Labelize rendering engine](https://github.com/GOODBOY008/labelize) 
 | --- | --- | --- |
 | System printing | Select a local virtual printer and save PDF or PNG while the desktop window is closed. | v0.1.2 |
 | Job management | Choose an output folder, inspect results, open saved files, and retry failed jobs. | v0.1.2 |
-| Label files | Open ZPL, EPL, TSPL/TSC, CPCL, or DPL; edit supported text files and preview each page. | `main` |
-| Visual design | Add text, Code 128, QR codes, rectangles, and images; move objects and edit their dimensions. | `main` |
-| Portable templates | Save editable `.labelize.json` templates with embedded images and imported fonts. | `main` |
+| Label files | Open ZPL, EPL, TSPL/TSC, CPCL, or DPL; edit supported text files and preview each page. | v0.2.0 |
+| Visual design | Add text, Code 128, QR codes, rectangles, and images; move objects and edit their dimensions. | v0.2.0 |
+| Portable templates | Save editable `.labelize.json` templates with embedded images and imported fonts. | v0.2.0 |
 
 ## Install
 
@@ -60,7 +60,7 @@ Defaults are PDF, the `Labelize` folder under Documents, a 102 × 152 mm label, 
 
 ## Open and design labels
 
-These features require a build from `main`. Use [GitHub Actions artifacts](https://github.com/GOODBOY008/labelize-printer/actions/workflows/build.yml) from a successful build containing the feature, or [build from source](DEVELOPMENT.md#build-and-run).
+Install v0.2.0 or later to use the **Labels** workspace. Development builds are also available as [GitHub Actions artifacts](https://github.com/GOODBOY008/labelize-printer/actions/workflows/build.yml), or you can [build from source](DEVELOPMENT.md#build-and-run).
 
 ### Open a label file
 

@@ -31,9 +31,9 @@ The release notes record these additional desktop checks:
 
 The installers remain unsigned; macOS bundles use ad-hoc signatures. These results do not close the native Windows x64, ZDesigner, macOS 13, or Linux desktop acceptance items below.
 
-## Labels workspace development checks
+## Labels workspace checks for v0.2.0
 
-These local results cover the implementation committed as [`abe5220`](https://github.com/GOODBOY008/labelize-printer/commit/abe52203dbf88e96dcee3f626fb79993adb7e720). The workspace is not included in the published v0.1.2 installers. The following local checks are distinct from subsequent remote CI runs.
+These local results cover the implementation committed as [`abe5220`](https://github.com/GOODBOY008/labelize-printer/commit/abe52203dbf88e96dcee3f626fb79993adb7e720). The workspace ships in v0.2.0 and was absent from v0.1.2. The following local checks are distinct from release CI; each release links its exact source commit and successful build in the release notes.
 
 - **File opening and pagination:** On the current macOS Apple Silicon host, a native file dialog opened a multipage ZPL file. `^PQ2` produced two 50 × 30 mm / 400 × 240 px pages, followed by a 100 × 75 mm / 800 × 600 px page with its own dimensions.
 - **Design editing:** An imported Chinese font, text, QR code, and Code 128 rendered correctly. Moving an object, saving the template, and reopening it preserved positions and the embedded font. Chinese content editing, preview refresh, undo/redo, and language switching were checked; language changes retained unsaved content.
