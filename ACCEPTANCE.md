@@ -1,143 +1,102 @@
-# MVP 验收记录
+# Acceptance record
 
-更新于 2026-11-08。实现和安装包可供内部试用。本记录区分构建、协议自动化、
-真实系统打印和目标操作系统实机验收。没有将交叉编译或 CI 配置算作实机通过。
+Updated 2026-11-08. [README](README.md) · [Development guide](DEVELOPMENT.md) · [Architecture](ARCHITECTURE.md)
 
-## 标签工作台开发版（未发布）
+This record separates builds, automated protocol checks, system printing, and native desktop acceptance. Cross-compilation, a configured CI job, or a container test does not establish desktop compatibility on the corresponding target platform. Results below identify the version or development milestone to which they apply.
 
-以下结果来自本地 `codex/label-studio` 开发版本，不代表已发布的 v0.1.2 安装包或新版本的远程 CI 结果。
+## Platform coverage
 
-- 当前 macOS Apple Silicon 主机：通过原生文件对话框打开多页 ZPL，逐页浏览；
-  `^PQ2` 产生两个 50 × 30 mm / 400 × 240 px 页面，随后保留 100 × 75 mm / 800 × 600 px 页面。
-- 设计模板：导入的中文字体、文字、二维码及 Code 128 正常渲染；拖动对象后保存并重新打开模板，位置和内嵌字体保留。
-  实际编辑中文内容、更新预览、撤销/重做及中英文切换均已检查，切换语言不丢失未保存内容。
-- 从工作台保存 PDF、PNG：后台任务均为 Saved，实际文件分别为一页 102 × 152 mm PDF 和 816 × 1216 px PNG。
-  使用独立测试数据目录与后台，未修改已安装队列的设置。
-- 窗口缩小到工作台的窄布局后，字段、操作按钮和分页可通过滚动访问；
-  已修复属性标签竖排以及源码编辑区域过矮的问题。关闭/替换未保存文档的取消与放弃操作已检查。
-- 11 个 core 集成测试通过：新增五种文件格式预览/输出像素一致性、独立设置快照、二进制 TSPL、
-  模板资产往返、透明图片/二维码白色模块、PDF 尺寸及错误输入验证；原有六项任务/栅格回归仍通过。
-- 本机完整后台 smoke 通过，包括新增 EPL/TSPL/CPCL/DPL 提交及独立预览子进程，
-  原有 RAW、崩溃重试、重启恢复、PWG/URF 和端口冲突用例仍通过。
-- Windows x64 GNU 目标交叉检查通过。新增工作台尚未进行 Windows/Linux 桌面实机验证，
-  中文输入法组合输入、文件拖放和操作系统文件关联不计入本次通过项；当前未注册文件关联。
+| Area | Recorded result | Environment and limits |
+| --- | --- | --- |
+| macOS Apple Silicon app and PKG | Built | Current Apple Silicon host; app signed ad hoc, PKG unsigned and not notarized. |
+| macOS native system printing | Passed | Preview's print dialog selected Labelize Printer. With GPUI closed, two copies produced one two-page PDF. |
+| macOS Intel app and PKG | Built; background checks passed | Earlier x86_64 cross-builds ran the daemon and PAPPL through Rosetta. Intel GPUI desktop acceptance remains pending. |
+| Windows x64 app and NSIS installer | UTM trial passed | Windows 11 Pro ARM64, Build 26200, using x64 emulation. Desktop use, installation/upgrade/removal, login startup, and direct RAW output were checked. ZDesigner system printing remains pending. |
+| Debian 12 amd64 app, PAPPL, and DEB | Built; background and installed-queue checks passed | Debian 12 amd64 container: DEB installation → CUPS PDF raster filter → PAPPL → two-page PDF, followed by queue and package removal. |
+| Ubuntu 24.04 | Target acceptance pending | The same amd64 DEB is offered. Native dependency, login-service, and desktop-printing acceptance has not been established by this record. |
+| GPUI input, file selection, and resizing | Partly verified on macOS | Chinese path pasting, native folder selection, settings persistence, resizing, job lists, and opening output. IME composition remains pending. |
+| Linux Wayland | Container rendering passed | Nested Weston with Mesa software Vulkan displayed the Chinese interface and job results. Real desktop, portal, and IME checks remain pending. |
+| Linux X11 | Container rendering passed | Xvfb/Openbox with Mesa software Vulkan displayed the interface on first launch. This uses the GPUI opaque-RGB visual patch and the application's deferred configure/restore handling. |
 
-本次没有修改 vendored Labelize 解析器或渲染器。直接打印到实体设备、把指令文件还原为设计对象、
-把设计导出为打印指令不在这一阶段的实现范围内。
+Early local trial packages used development builds, with debug symbols stripped from Windows/Linux binaries. Release-profile builds and package artifacts are available through [GitHub Actions](https://github.com/GOODBOY008/labelize-printer/actions/workflows/build.yml). A package must be matched to its source commit before applying these results to it.
 
-## 当前结果
+## Published v0.1.2
 
-| 项目 | 结果 | 实际环境 / 边界 |
-|---|---|---|
-| macOS Apple Silicon 程序和 PKG | 已构建 | 当前 macOS ARM 主机，应用 ad-hoc 签名，PKG 未签名/公证 |
-| macOS 原生系统打印 | 已通过 | “预览”的系统打印窗口可选 Labelize Printer；关闭 GPUI 后打印两份，后台保存一份两页 PDF |
-| macOS Intel 程序和 PKG | 已构建；后台测试通过 | x86_64 交叉编译，后台和原生 PAPPL 经 Rosetta 执行；尚未在 Intel 实机测试 GPUI |
-| Windows x64 程序和 NSIS EXE | UTM 试用通过 | Windows 11 Pro ARM64（Build 26200），x64 仿真。GPUI、安装/升级/卸载、登录启动及直接 RAW 输出已验证；ZDesigner 系统打印待验收 |
-| Debian 12 x64 程序、PAPPL 和 DEB | 已构建；后台及系统队列测试通过 | Debian 12 amd64 容器，实际安装 DEB → CUPS 的 PDF 栅格过滤 → PAPPL → 两页 PDF，移除队列和 DEB 成功 |
-| Ubuntu 24.04 | 待实机验收 | 提供同一 amd64 DEB；尚未验证安装依赖、登录服务与桌面打印 |
-| GPUI 输入、文件选择、缩放 | macOS 部分通过 | 中文路径粘贴、原生目录选择、设置保存、窗口缩放、任务列表和打开输出；中文输入法组合输入仍需验收 |
-| Linux Wayland | 容器绘制通过；待桌面验收 | 嵌套 Weston + Mesa 软件 Vulkan 显示完整中文界面及任务结果；真实桌面、目录 portal 和输入法待验收 |
-| Linux X11 | 容器绘制通过；待桌面验收 | Xvfb + Openbox + Mesa 软件 Vulkan：首次打开即显示中文界面和任务；包含 GPUI RGB visual 补丁及应用启动时的 configure/restore 兼容处理 |
+The [v0.1.2 release](https://github.com/GOODBOY008/labelize-printer/releases/tag/v0.1.2) contains four installers built from `36d169d3787182a7c56b0d5e2b17c38afa82e01c`. Its [release build](https://github.com/GOODBOY008/labelize-printer/actions/runs/42347073744) passed core output tests and headless RAW/IPP checks on the applicable runners, plus installed-package CUPS printing in Debian 12.
 
-上述本地试用包使用开发配置构建，并去除 Windows/Linux 分发二进制的调试符号。
-发布配置的构建、测试及试用包可查看 [GitHub Actions](https://github.com/GOODBOY008/labelize-printer/actions/workflows/build.yml)。
+The release notes record these additional desktop checks:
 
-## 0.1.1 预发布候选
+- macOS 27.2 Apple Silicon: switch English/Simplified Chinese in both directions, retain the preference after restart, preserve unsaved settings while switching, and use the 480 × 360 layout.
+- Existing Windows 11 ARM64 VM with x64 emulation: upgrade the v0.1.2 installer, launch the desktop, switch languages, and retain the choice after restart.
 
-验收使用同一次成功的 `main` 构建中的四个安装包。记录源码提交、构建链接和各包的 SHA-256。
-更换候选提交后，用新包重跑受影响的验收项。以下记录按环境区分实机、虚拟机和容器。
+The installers remain unsigned; macOS bundles use ad-hoc signatures. These results do not close the native Windows x64, ZDesigner, macOS 13, or Linux desktop acceptance items below.
 
-- Windows 11 x64 上用 Zebra 官方 ZDesigner v10 的 ZD421 ZPL 203/300 dpi 从系统打印窗口
-  提交合成标签。两种分辨率各测 PDF 和 PNG，核对 RAW 任务数量、`^PW`、`^LL`、份数、像素和页尺寸。
-- macOS 13 Apple Silicon 与 Intel、Debian 12 X11、Ubuntu 24.04 Wayland 各打印两页不同内容，
-  选择两份并按份排序，分别保存 PDF 和 PNG。核对四页的顺序、尺寸和输出文件，
-  验证中文目录选择、输入法和登录启动。
-- 从 `0.1.0` 升级后核对设置、历史和原输出。关闭界面后再打印，测试队列修复与卸载，
-  并验证不可写目录、磁盘满、端口冲突、接收中断和后台重启后的状态与重试。
+## Labels workspace development checks
 
-在所有目标环境通过后发布 GitHub Pre-release。提交验收结果时附系统版本、架构、安装包哈希，
-以及合成样例的页数、尺寸和任务结果。
+These local results cover the implementation committed as [`abe5220`](https://github.com/GOODBOY008/labelize-printer/commit/abe52203dbf88e96dcee3f626fb79993adb7e720). The workspace is not included in the published v0.1.2 installers. The following local checks are distinct from subsequent remote CI runs.
 
-## 新版桌面界面复测
+- **File opening and pagination:** On the current macOS Apple Silicon host, a native file dialog opened a multipage ZPL file. `^PQ2` produced two 50 × 30 mm / 400 × 240 px pages, followed by a 100 × 75 mm / 800 × 600 px page with its own dimensions.
+- **Design editing:** An imported Chinese font, text, QR code, and Code 128 rendered correctly. Moving an object, saving the template, and reopening it preserved positions and the embedded font. Chinese content editing, preview refresh, undo/redo, and language switching were checked; language changes retained unsaved content.
+- **Export:** PDF and PNG exports reached `Saved`. Actual output was one 102 × 152 mm PDF page and an 816 × 1216 px PNG. The tests used an isolated data directory and daemon, leaving the installed queue's settings unchanged.
+- **Layout and document prompts:** Fields, actions, and pagination remained reachable by scrolling in the narrow layout. Property labels wrapping vertically and an undersized source editor were corrected. Cancel/discard behavior when replacing or closing an edited document was checked.
+- **Core tests:** All 11 integration tests passed. The five new tests cover preview/output pixel equality for five file languages, per-job settings, binary TSPL, embedded-asset round trips, transparency and QR white modules, PDF dimensions, and invalid input. The original six job/raster tests still passed.
+- **Background smoke:** The full local suite passed, including EPL/TSPL/CPCL/DPL submission and isolated preview processes, alongside RAW, crash/retry, restart recovery, PWG/URF, and port-conflict checks.
+- **Build checks:** Local Clippy and Windows x64 GNU target checking passed. The new workspace has not been verified on Windows or Linux desktops. IME composition and file dropping are not counted as passed; OS file associations are not registered.
 
-- Windows 11 UTM 的 800 × 600 桌面可见应用、标题栏和任务栏图标。用键盘切换页面、
-  选择 PNG 并提交测试，任务显示为已保存，实际输出 816 × 1216 像素。
-  Page Down 可滚动设置区，底部保存按钮保持可见。
-- 用新版 NSIS 覆盖升级后，已核对安装程序写入的图标配置及应用文件哈希。
-  升级前的 4 条任务、8 个输出文件和输出设置均已保留，后台恢复监听。
-- macOS Apple Silicon 上，使用原生目录选择器选择含中文和空格的目录，保存并生成 PNG。
-  缩小窗口时可继续操作底部按钮。无效的标签宽度会显示错误，后台断开后可重新连接，
-  表单保留未保存的输入。
-- Debian 12 安装新版 DEB 后，Xvfb/Openbox 和嵌套 Weston 的 640 × 480
-  桌面均能完整显示导航和底部操作。新版 DEB 已再次通过 CUPS 到两页 PDF 的系统打印检查。
+The vendored Labelize parsers and renderer were unchanged for this feature. Direct physical-printer submission, reconstructing design objects from printer-language source, and exporting designs as printer commands are outside this implementation milestone.
 
-## Windows UTM 验证
+## Earlier desktop regression checks
 
-- NSIS 交互安装和覆盖升级成功。修复了交叉编译包缺少 Common Controls v6 清单、
-  调试版依赖构建机着色器路径的问题。修复版在虚拟机的 800 × 600 桌面显示中文向导，
-  标题栏和导航可见，后台状态为运行中。
-- 使用安装包内的脚本注册当前用户登录任务。退出 Windows 后重新登录，未打开 GPUI 时
-  后台已监听本机 RAW 端口，命名管道可查询状态，升级前两条任务仍在。
-- 关闭 GPUI 后，将同一份两标签 ZPL 分包发到 RAW 端口。首标签 `^PQ2`，两个任务分别
-  保存为一份三页 PDF 和三张 PNG。前两页为 812 × 1218 像素，第三页为 600 × 400 像素，
-  对应 101.5 × 152.25 mm 和 75 × 50 mm。PNG 的 pHYs 均为 8000 像素/米。
-- NSIS 卸载后，应用文件、后台进程和登录任务已移除。重装并打开 GPUI 后，后台自行启动，
-  卸载前的四条任务和输出文件仍在。
-- 此虚拟机尚无 ZDesigner。临时通用队列的 RAW 提交在 `OpenPrinter` 返回无效打印机名称，
-  已清理测试队列及端口。系统打印窗口到 ZDesigner 的路径仍需在接受
-  [Zebra 许可协议](https://www.zebra.com/content/experience-fragments/zebra1/us/en/support/eula/end-user-license-agreement-unrestricted-software/master.html)
-  并安装驱动后验收。
+- Windows 11 UTM at 800 × 600 showed the app, title-bar icon, and taskbar icon. Keyboard navigation selected PNG and submitted a test; the job became `Saved` and produced 816 × 1216 px output. Page Down scrolled settings while the bottom action remained available.
+- An NSIS upgrade preserved the earlier four jobs, eight output files, and settings. Installed icon configuration and binary hashes were checked, and the daemon resumed listening.
+- On macOS Apple Silicon, a native folder picker selected a path containing Chinese characters and spaces; saving settings and generating PNG succeeded. Bottom actions remained usable after shrinking the window. Invalid label width produced an error; reconnecting after a daemon interruption preserved unsaved form input.
+- Debian 12 package checks rendered the navigation and bottom actions at 640 × 480 under both Xvfb/Openbox and nested Weston. The updated DEB also passed CUPS-to-two-page-PDF printing.
 
-## macOS 真实系统打印证据
+## Windows UTM evidence
 
-1. 本地 IPP 队列注册为 `LabelizePrinter`，显示名为 `Labelize Printer`。
-2. GPUI 测试页经 ZPL → Labelize → PDF 保存。
-3. 用“预览”打开测试 PDF，在原生打印窗口选择 Labelize Printer，份数 2、4 × 6 inch。
-4. 关闭 GPUI 窗口，确认 GUI 进程退出，再提交打印。
-5. 后台任务 `75d36d97-8730-42d5-b759-70663fd9777f` 成为 Saved，输出文件实际存在。
-6. `pdfinfo` 检查为 2 页、每页 288 × 432 pt（101.6 × 152.4 mm）。
-   `pdfimages -list` 检查为两幅 812 × 1218 的灰度图，203 dpi。
-7. 重新打开 GPUI 后，“最近任务”显示该系统打印任务及其两页输出。
+- Interactive NSIS installation and upgrade succeeded. Fixes addressed a missing Common Controls v6 manifest in cross-builds and debug shaders that had depended on a build-machine source path. The corrected app displayed the Chinese setup page and a running background service at 800 × 600.
+- The packaged script registered the current user's login task. After signing out and back in, the daemon listened on loopback RAW without GPUI running; named-pipe status queries worked and the two earlier jobs remained present.
+- With GPUI closed, a two-label ZPL job was sent in TCP fragments. The first label used `^PQ2`. Separate jobs saved one three-page PDF and three PNGs. The first two pages were 812 × 1218 px (101.5 × 152.25 mm); the last was 600 × 400 px (75 × 50 mm). PNG `pHYs` values were 8,000 pixels/metre.
+- NSIS uninstall removed application files, processes, and the login task. Reinstalling and opening GPUI started the daemon again and preserved the four jobs and their output.
+- ZDesigner was not installed during this RAW validation. A temporary generic queue's submission failed at `OpenPrinter` with an invalid printer name; its queue and port were removed. The system-dialog-to-ZDesigner path remains unverified and requires installing the official driver under [Zebra's license](https://www.zebra.com/content/experience-fragments/zebra1/us/en/support/eula/end-user-license-agreement-unrestricted-software/master.html).
 
-此结果证明当前 macOS 主机上的系统打印 → PAPPL → 栅格输出以及关闭 GUI 后打印，
-不等价于 macOS 13 兼容性、所有打印应用或所有纸张设置已经验收。
+## macOS native system-printing evidence
 
-## 自动化检查
+1. Registered the local IPP queue as `LabelizePrinter`, displayed as **Labelize Printer**.
+2. Saved a GPUI test page through ZPL → Labelize → PDF.
+3. Opened the PDF in Preview and selected Labelize Printer, two copies, and 4 × 6 inch media in the native print dialog.
+4. Closed GPUI and confirmed its process exited before submitting the print.
+5. Background job `75d36d97-8730-42d5-b759-70663fd9777f` reached `Saved`, with output present on disk.
+6. `pdfinfo` reported two pages of 288 × 432 pt (101.6 × 152.4 mm). `pdfimages -list` reported two grayscale images at 812 × 1218 px, 203 dpi.
+7. Reopened GPUI and confirmed the job and its two-page output in **Recent jobs**.
 
-- `cargo test -p labelize-printer-core --locked`：6 个集成测试通过。
-  覆盖 ZPL 多标签 / `^PQ` / 逐页尺寸、PDF 页数和 MediaBox、栅格像素与 PNG pHYs、
-  设置快照、输出提交恢复、同 ID 重试、接收中断、页数/画布限制和路径边界。
-- `cargo clippy --workspace --all-targets --locked -- -D warnings`：当前 macOS 构建通过。
-  GPUI 的旧间接依赖仍有弃用与 future-incompatibility 提示，未修改其运行行为。
-- `python3 scripts/smoke.py`：ARM macOS、Intel/Rosetta 和 Debian 12 amd64 后台通过。
-  覆盖真实 RAW TCP 分包及 EOF、`^XZ` 不提前提交、截断任务失败、worker 被杀后重试、
-  后台重启、IPP manifest 写失败回报、PWG 1/8-bit、Apple Raster、页序/极性/尺寸、
-  IPP copies 和已展开份数、截断栅格、首次启动端口冲突。
-- Debian 测试附加 `--disk-full-dir /disk-full-test`：64 KiB 专用 tmpfs 实际触发 ENOSPC，
-  未提交输出且任务失败；释放空间后同 ID 重试保存成功。
-- PAPPL C 适配器通过 Clang / GCC 的 `-Wall -Wextra -Werror` 构建。
-- 安装后的 DEB 在 Debian 12 容器中完成 CUPS 队列创建、两份 PDF 原生栅格过滤、
-  保存两页 PDF、队列移除及卸载。可用 `scripts/linux-system-smoke.sh` 在专用容器中复现。
-- X11 和 Wayland 启动后的截图已人工检查，包含完整中文界面和已保存任务。
-  这不覆盖实机 GPU、中文输入法组合输入、桌面 portal 或用户登录服务。
-- Labelize 上游回归：50 个原有 ZPL 解析测试、5 个新解析选项测试、3 个架构测试、
-  170 个 golden 测试、3 个 diff-report 测试通过，共 231 项。
-  carrier / unit / reverse 三份报告已检查，黄金图片和报告未改变。
+This establishes system printing through PAPPL and raster output, including operation with the GUI closed, on that macOS host. It does not establish macOS 13 compatibility or coverage of every application and paper setting.
 
-后台测试不创建系统队列或登录服务，测试数据使用独立临时目录。
-程序内使用的 Labelize 源码提交见 [依赖来源](vendor/labelize/PROVENANCE.md)。
+## Earlier automated checks
 
-## 完整验收仍需执行
+These are the recorded virtual-printer baseline checks. The workspace's additional tests are listed above.
 
-- Windows：在原生 Windows 11 x64 上复测安装及运行。安装官方 ZDesigner v10 后，
-  验证 ZD421 ZPL 203/300 dpi、系统打印窗口可选、驱动正常关闭 RAW 连接、中文图形/条码/压缩图形、
-  多标签多份数，以及关闭 GPUI 后从系统打印窗口提交任务。
-- macOS 13 Intel / Apple Silicon：PKG 安装、首次授权、LaunchAgent 下次登录、升级/卸载，
-  真正的中文输入法组合输入和不同显示器缩放；当前主机并非 macOS 13。
-- Ubuntu 24.04 / Debian 12 桌面：DEB 安装/升级/卸载、X11/Wayland、Vulkan 驱动、
-  目录 portal、中文输入、用户级 systemd 登录启动，以及原生应用打印窗口。
-- 三端共同：文件夹权限变更、真实打印取消、磁盘耗尽导致数据库也无法写入后的恢复、
-  任务接收时系统掉电，以及完整安装/修复/卸载后没有遗留队列/登录项。
+- The original six core integration tests passed, covering multiple ZPL labels, `^PQ`, per-page dimensions, PDF page count and MediaBox, raster pixels and PNG `pHYs`, settings snapshots, output-commit recovery, same-ID retry, interrupted input, page/canvas limits, and path boundaries.
+- `cargo clippy --workspace --all-targets --locked -- -D warnings` passed on macOS. Older indirect GPUI dependencies still emit deprecation/future-compatibility notices.
+- Background smoke tests passed on ARM macOS, Intel binaries through Rosetta, and Debian 12 amd64. Coverage includes real RAW fragmentation/EOF, no early submission at `^XZ`, truncated ZPL failure, worker termination/retry, restart, IPP manifest errors, PWG 1/8-bit and Apple Raster, page order/polarity/dimensions, copy handling, truncated rasters, and first-start port conflicts.
+- Debian's `--disk-full-dir /disk-full-test` used a dedicated 64 KiB tmpfs to trigger `ENOSPC`. No output was committed; after freeing space, retry saved the job under the same ID.
+- The PAPPL C adapter built with Clang and GCC under `-Wall -Wextra -Werror`.
+- The installed DEB completed queue creation, native CUPS PDF filtering for two copies, a two-page PDF save, queue removal, and package removal. [scripts/linux-system-smoke.sh](scripts/linux-system-smoke.sh) reproduces this in a dedicated container.
+- X11 and Wayland screenshots were inspected for the complete Chinese interface and saved-task state. These checks do not cover physical GPU drivers, IME composition, desktop portals, or user login services.
+- Upstream Labelize checks for the parser API passed: 50 existing ZPL parser tests, five parser-option tests, three architecture tests, 170 golden tests, and three diff-report tests, for 231 total. Carrier, unit, and reverse reports were reviewed; golden images and reports were unchanged. See [dependency provenance](vendor/labelize/PROVENANCE.md).
 
-已实现输出失败和重试机制，但没有把上面这些尚未执行的故障场景标成通过。
-数据库所在磁盘完全耗尽时，失败状态本身也可能无法落盘；释放空间并重启后按恢复规则处理。
+The ordinary background smoke suite uses temporary data and does not create a system queue or login service. The installed-package test creates and removes those resources inside its dedicated container.
+
+## Remaining acceptance work
+
+Use all four installers from the same successful build. Record the source commit, workflow URL, package SHA-256, OS version, architecture, sample dimensions/page counts, and actual results. When the candidate changes, rerun affected checks. Publishing a trial does not mark unexecuted checks as passed.
+
+| Environment | Required checks |
+| --- | --- |
+| Native Windows 11 x64 | Install and run the package; use official ZDesigner v10 ZD421 ZPL at 203 and 300 dpi from a system print dialog. For both resolutions and both PDF/PNG outputs, check RAW task count, normal connection closure, `^PW`/`^LL`, copies, page dimensions, Chinese graphics, barcodes, compressed graphics, and printing with GPUI closed. |
+| macOS 13, Intel and Apple Silicon | PKG install, first authorization, next-login LaunchAgent startup, upgrade/removal, native print dialogs, IME composition, and display scaling. The current Apple Silicon host is newer than macOS 13. |
+| Debian 12 X11 and Ubuntu 24.04 Wayland desktops | DEB install/upgrade/removal, Vulkan drivers, folder portal, Chinese input, user-level systemd startup, and native application print dialogs. |
+| All desktop targets | Print two pages of different content with two collated copies to both PDF and PNG; verify four-page order, dimensions, output, Chinese-path selection, and login startup. Exercise queue repair and printing after closing the UI. |
+| Upgrade and fault recovery | Preserve settings, history, and output when upgrading from earlier releases, including 0.1.0. Check unwritable folders, changed permissions, full disks, port conflicts, interrupted reception, renderer crashes, cancellation, daemon restart, and power loss during reception. Verify complete queue/login-service cleanup after repair/removal. |
+
+Output failure and retry handling are implemented, but unexecuted fault scenarios are not marked as passed. If the database disk is completely full, failure recording may also fail; free space and restart to apply the recovery rules.

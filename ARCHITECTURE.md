@@ -1,121 +1,142 @@
-# 流程与职责
+# Architecture
 
-## 接入与处理边界
+[README](README.md) · [Development guide](DEVELOPMENT.md) · [Acceptance record](ACCEPTANCE.md)
 
-Windows 应用交给官方 ZDesigner 生成 ZPL，系统 RAW 端口将字节发送到本机后台。
-后台只在正常 EOF 后提交任务；不按网络包、换行或 `^XZ` 拆任务。
-超时、RST、空连接和超限输入记录为失败，保留已有输入；不提交残缺内容。
+Labelize Printer separates input acquisition, job management, rendering, and file output. Printer-language files use Labelize; system raster pages are already laid out and go directly through raster adaptation and file encoding. LPrint is not a dependency.
 
-macOS/Linux 的系统打印队列向 PAPPL 提交 PWG/Apple Raster。
-PAPPL 负责 IPP 生命周期与栅格协议解码。C 适配器负责检查尺寸、行数和格式，
-将 1/8 位 K/W/SW 和 8 位每通道的 sRGB 像素统一为灰度 PGM，保留尺寸、方向和页序。
-内置 PAPPL 补丁保留客户端页面头，并接收 CUPS 为单色队列生成的 sRGB 栅格。
-
-系统栅格的 `job-pages-per-set` 表示客户端已经展开份数，适配器验证完整页数后保持原顺序。
-否则适配器展开 IPP `copies` 一次，并支持整份排序或逐页排序。
-ZPL 的 `^PQ` 仅由 Labelize 展开。统一输出模块没有“份数”参数。
-
-## 持久化与状态
-
-```text
-Receiving → Queued → Processing → Saved
-     │         │          │
-     └─────────┴──────────┴──────→ Failed
-                                     │ 完整输入可重试，同一任务 ID
-                                     └──────────→ Queued
-```
-
-RAW 建立连接时、IPP 开始栅格任务时，创建 `JobRecord` 并快照设置。
-IPP 先调用 `begin-raster` 获得 UUID，随后提交带同一 UUID 的 manifest，
-因此不会在长任务接收期间使用后来修改的输出配置。
-
-SQLite 使用 WAL 和 FULL 同步；原始输入写入应用私有目录，完成 fsync 后才排队。
-任务状态、源标识、设置、页数、输出文件、失败原因和重试次数在数据库中保存。
-接入端只得到“已接收”时，不能据此显示“已保存”。
-
-每次渲染启动独立的无 GUI 子进程，300 秒超时。独占任务文件锁避免重启时两个
-worker 同时写同一任务。输出先写同一文件系统中的隐藏临时目录，然后以 rename
-提交整个任务目录。目录内有完成收据；数据库提交前崩溃可通过收据恢复而不重复输出。
-
-重启将 Processing 退回 Queued，将未完整接收的 Receiving 置为 Failed。
-重试复用原 UUID 和设置快照；用户修复原输出目录权限后即可重试。
-修改设置只影响新任务，失败任务不会悄悄切换输出目录或尺寸。
-
-PAPPL 的 end-job 回调等待后台实际生成文件，成功后才返回 true；失败返回 false，
-IPP 报告 aborted。PAPPL 崩溃后由后台重启，接收中的任务会失败并要求重新提交。
-父后台退出后，PAPPL 的父进程检查定时器结束适配器。
-若暂存失败导致 manifest 本身无法写出，适配器另通过 IPC 回报失败；数据库完全
-不可写时，保留日志并在空间恢复、后台重启后处理未完成的接收记录。
-
-## 内部接口
-
-| 类型 | 含义 |
-|---|---|
-| `PrintJobInput::Zpl` | 私有暂存文件，分辨率/缺省尺寸在任务设置快照中 |
-| `PrintJobInput::LabelFile` | 文件语言或设计模板类型、私有输入快照，使用独立的任务设置 |
-| `PrintJobInput::RasterPages` | 最终页序，文件/尺寸/分辨率逐页保留 |
-| `RenderedPage` | 灰度像素、宽高、物理尺寸及 X/Y 分辨率 |
-| `JobRecord` | UUID、设置快照、输入、状态、输出、诊断 |
-| `OutputReceipt` | 已原子提交的文件与页数，支持完成阶段恢复 |
-
-`core::document` 负责标签文件解析与渲染，`core::design` 将可视化设计和 Labelize 条码编码结果转换为中立 IR；`core::output` 统一保存文件。ZPL 使用 `parse_with_options` 开启
-逐标签尺寸、完整格式检查和 1000 页上限，缺省 `parse` 行为仍与 Labelize 原 API 兼容。
-`^LL` 在首个 `^FS` 前生效，之后的设置影响下一标签；有效 `^PW`/`^LL` 优先于缺省纸张。
-
-## 本地权限与生命周期
-
-应用数据和 Unix IPC 父目录权限为 0700，socket/token 为 0600。
-Windows Named Pipe 显式 DACL 仅授权当前用户 SID；请求另带私有目录中的随机 token。
-RAW/IPP 仅监听 IPv4 loopback，不开放网络共享。RAW 协议本身无用户认证，
-这是当前“本机单用户”范围的限制。
-
-安装先尝试当前用户已有的打印管理权限，只有失败时才使用 macOS 系统授权或 Linux
-PolicyKit；Windows 队列配置脚本按需提权。日常后台不提权。
-已有同名但非本产品的打印队列/端口会被拒绝修改。
-
-Windows 登录计划任务、macOS LaunchAgent、Linux 用户 systemd 提供下次登录启动。
-关闭 GPUI 不停止后台；显式 `stop` 要求队列空闲。目录变化、端口冲突、渲染失败
-都通过 IPC 在界面反馈。已完成安装后的端口冲突不会静默换端口，否则系统队列会失联；
-需要用户解除占用并修复队列。
-
-## 资源与保留
-
-输入最多 64 MiB；栅格按规范化后且展开份数的总大小检查。最多 1000 页，
-每页最多 16 Mi 像素、单边最多 32000 dots。尺寸和分辨率必须有限且为正数。
-最多 4 个同时接收的 RAW 连接、16 个 IPC 处理连接、单个渲染 worker。
-原始输入、失败诊断及完成历史首版保留在本地；不自动删除用户输出。
-磁盘配额和历史清理策略留待后续，试用时应定期检查数据目录占用。
-
-## 原始依据
-
-- [PAPPL 栅格回调](https://www.msweet.org/pappl/pappl.html#the-raster-printing-callbacks)
-- [PAPPL 1.4.12 源码](https://github.com/michaelrsweet/pappl/releases/tag/v1.4.12)
-- [Zebra ZPL Programming Guide](https://www.zebra.com/content/dam/support-dam/en/documentation/unrestricted/guide/software/zpl-zbi2-pg-en.pdf)
-- [OpenSSL 下载与版本](https://www.openssl-library.org/source/)
-
-## 桌面标签工作台
-
-工作台新增 `PrintJobInput::LabelFile`，保存文件类型、输入快照和独立的任务设置。
-`SubmitDocument` 将输入复制进任务目录后才返回，输出仍在后台独立 worker 中执行。
-原有 `Zpl` 序列化格式与 RAW 接收行为保留，系统栅格路径不受影响。
-
-`core::document::render` 同时用于预览与正式输出，统一逐标签尺寸、页序和画布限制。
-预览由桌面端启动无 GPU 的 daemon `preview` 子命令，设置 300 秒超时，写 PNG 和页信息。
-临时预览目录由桌面端持有，替换或退出时清理；GUI 每次只加载当前页。
-预览总像素限制为 128 Mi，正式输出继续受单页 16 Mi 像素、1000 页和 64 MiB 输入限制。
-
-设计格式版本为 1，最多 100 个对象。毫米几何、内容、图片及字体可序列化为 `.labelize.json`。
-图片合成白底，条码与二维码保留整数模块和静区；文字缺字、溢出和越界对象拒绝输出。
-预览和输出共用这些规则，设计不会被重新转换为 ZPL。指令文件不自动重建为设计对象。
+## Data flow
 
 ```mermaid
-flowchart LR
-  F[标签文件] --> P[Labelize 语言解析器]
-  D[设计模板] --> IR[core::design 中立 IR]
-  P --> R[Labelize 渲染]
-  IR --> R
-  R --> V[临时 PNG 预览]
-  R --> O[RenderedPage · 后台原子保存 PDF/PNG]
-  S[系统栅格] --> A[栅格适配]
-  A --> O
+flowchart TD
+  W[Windows application] --> Z[ZDesigner generates ZPL]
+  Z --> RAW[Local RAW receiver]
+  M[macOS or Linux application] --> OS[System rasterization]
+  OS --> IPP[PAPPL IPP receiver]
+  F[Label file or design template] --> IPC[Local document submission]
+  RAW --> J[Background job manager: input spool and settings snapshot]
+  IPP --> J
+  IPC --> J
+  J -->|Printer-language file| P[Labelize parser]
+  J -->|Design template| D[Design objects to neutral IR]
+  P --> L[Labelize renderer]
+  D --> L
+  J -->|System raster| R[Raster adapter]
+  L --> O[Unified PDF or PNG output]
+  R --> O
+  O --> SAVE[Atomic file commit, then Saved]
 ```
+
+## Component responsibilities
+
+| Component | Responsibility |
+| --- | --- |
+| `crates/desktop` | GPUI setup, output settings, recent jobs, file editing, visual design, and preview controls. |
+| `crates/daemon` | RAW reception, authenticated local IPC, job scheduling, isolated render workers, and the PAPPL process lifecycle. |
+| `crates/core` | Settings, SQLite persistence, input snapshots, typed job boundaries, platform integration, document rendering, and output commits. |
+| `native/ipp` | PAPPL job/page callbacks, raster validation and normalization, copy expansion, and reporting completion after files are saved. |
+| `vendor/labelize` | Pinned language parsers, barcode encoders, and renderer. See [provenance](vendor/labelize/PROVENANCE.md). |
+| `platform` / `scripts` | System queues, login services, native builds, icons, and installers. |
+
+Within core, `document` dispatches label files to the appropriate parser and renderer. `design` turns visual objects and Labelize barcode output into language-neutral IR. `output` accepts normalized pages and commits PDF/PNG files. Operating-system integration and job management stay outside the Labelize dependency.
+
+## Input boundaries and copies
+
+### Windows RAW
+
+The official ZDesigner driver produces ZPL and sends it through the system queue's local TCP port. The daemon commits a complete job only after a normal connection EOF. Network packets, newlines, and individual `^XZ` commands do not define job boundaries.
+
+Timeouts, connection resets, empty connections, and oversized input fail the job. Received input is retained for diagnosis; incomplete jobs are not rendered.
+
+### macOS and Linux IPP
+
+The system queue sends PWG or Apple Raster to PAPPL, which handles IPP lifecycle and raster-protocol decoding. The C adapter validates page dimensions, row counts, and formats, then normalizes 1/8-bit K/W/SW and 8-bit-per-channel sRGB into grayscale PGM. It preserves pixel dimensions, physical size, orientation, and page order without further layout, scaling, or rotation.
+
+The bundled PAPPL patch preserves client raster headers and accepts sRGB input that CUPS can produce for a monochrome queue.
+
+If `job-pages-per-set` indicates that the client already expanded copies, the adapter validates the complete page count and keeps that order. Otherwise it expands IPP `copies` once, supporting collated and uncollated output. Labelize handles ZPL `^PQ` expansion. The output module has no copy-count parameter.
+
+### Direct documents
+
+`SubmitDocument` takes a language or design-template type and a per-job settings snapshot. The daemon copies the input into its private job directory before responding, so the job no longer depends on the original file or the desktop process. Workspace settings do not overwrite system-queue settings.
+
+The legacy `Zpl` input representation remains supported for RAW and previously stored jobs. Other printer-language copy semantics follow the embedded Labelize engine; the integration does not add its own expansion for those languages.
+
+## Persistence and recovery
+
+```mermaid
+stateDiagram-v2
+  Receiving --> Queued: Complete input persisted
+  Receiving --> Failed: Interrupted or invalid reception
+  Queued --> Processing: Worker starts
+  Processing --> Saved: Output committed
+  Queued --> Failed: Scheduling failure
+  Processing --> Failed: Rendering or output failure
+  Processing --> Queued: Service restarts
+  Failed --> Queued: Retry with complete input and the same ID
+```
+
+A `JobRecord` and settings snapshot are created when a RAW connection opens or an IPP raster job begins. IPP first calls `begin-raster` to obtain a UUID, then submits a manifest with that UUID. Settings changed during a long reception do not affect the job already being received.
+
+SQLite uses WAL mode and FULL synchronization. Input is written to private application storage and synced before the job is queued. The database records state, source, settings, page count, output files, errors, and retry attempts. Receiving all bytes is distinct from saving the output.
+
+Each rendering job runs in a separate process without GUI or GPU initialization, with a 300-second timeout. An exclusive job-file lock prevents two workers from writing the same task after a restart. Output is written into a hidden temporary directory on the destination filesystem, then the whole directory is committed by rename. A completion receipt allows recovery if the process exits after the files are committed but before SQLite records success.
+
+On restart, `Processing` jobs return to `Queued`; incomplete `Receiving` jobs become `Failed`. Retries reuse the UUID and original settings. Fixing the original output directory's permissions enables retry; changing global settings does not silently redirect an existing failed job.
+
+PAPPL's end-job callback waits for actual output success. It returns success only after the output files are committed; failures report an aborted IPP job. The daemon restarts PAPPL after a crash, and interrupted receptions fail and require resubmission. A parent-process check terminates the adapter when its daemon exits.
+
+If staging fails before an error manifest can be written, the adapter also reports the failure over IPC. A completely full database disk can prevent even the failure state from being recorded; logs are retained, and restart recovery applies after space is freed.
+
+## Internal types
+
+| Type | Boundary |
+| --- | --- |
+| `PrintJobInput::Zpl` | Private ZPL input file; resolution and fallback dimensions come from the job's settings snapshot. |
+| `PrintJobInput::LabelFile` | File language or design-template type, private input snapshot, and independent job settings. |
+| `PrintJobInput::RasterPages` | Final page order, with per-page file, physical size, and resolution. |
+| `RenderedPage` | Grayscale pixels, pixel dimensions, physical dimensions, and X/Y resolution. |
+| `JobRecord` | UUID, settings snapshot, input, state, output locations, and diagnostics. |
+| `OutputReceipt` | Committed files and page count used to recover completion. |
+
+ZPL parsing uses `parse_with_options` to enable declared dimensions, complete-format validation, and a 1,000-label limit. The original parser API keeps its default behavior. Valid `^PW` and `^LL` dimensions take precedence over fallback settings. `^LL` takes effect before the first `^FS`; later changes apply to the next label.
+
+## Desktop previews and designs
+
+`core::document::render` is shared by preview and export, including page order, dimensions, and canvas limits. The desktop starts the daemon's standalone `preview` subcommand with a 300-second timeout. That process writes PNG pages and page metadata; the desktop loads only the selected page. Temporary preview directories are owned by the desktop and cleaned up when their handles are dropped.
+
+Design format version 1 stores up to 100 objects in `.labelize.json`: geometry in millimetres, text and barcode content, images, and an optional imported font. Images and fonts are embedded as base64 data, without external file dependencies. Undo history is bounded by both entry count and asset size.
+
+Images are composited over white. Barcodes use integer module scaling and quiet zones. Missing font glyphs, overflowing text, invalid geometry, and barcodes that cannot fit are rejected. Preview and export apply the same rules. Designs produce neutral IR directly; they are not converted to ZPL. Importing printer-language source does not reconstruct visual objects.
+
+## Local communication and lifecycle
+
+Application storage and Unix IPC parent directories use mode `0700`; socket and token files use `0600`. Windows named pipes have an explicit DACL for the current user's SID. IPC requests also carry a token from private storage.
+
+RAW and IPP listen only on IPv4 loopback. RAW itself has no user authentication, which is a limitation of the current local, single-user scope. Network sharing is not supported.
+
+Queue setup first attempts the user's existing permissions, then requests macOS authorization or Linux PolicyKit elevation if needed. Windows queue scripts elevate when required. Routine processing is not elevated. Setup refuses to replace an unrelated printer or port with the same name.
+
+Login startup uses a Windows scheduled task, macOS LaunchAgent, or Linux user-level systemd service. Closing GPUI leaves the daemon running; `stop` requires an idle queue. After queue installation, a port conflict is reported instead of silently changing ports and disconnecting the system queue. The user must resolve the conflict and repair the queue.
+
+## Resource limits and retention
+
+| Resource | Limit |
+| --- | --- |
+| Job input | 64 MiB; raster input is counted after normalization and copy expansion. |
+| Pages per job | 1,000 |
+| Page canvas | 16 Mi pixels, at most 32,000 dots on either axis. |
+| Worker time | 300 seconds |
+| Preview cache | 128 Mi pixels across all pages. |
+| Design objects | 100 per template. |
+| Embedded assets | 8 MiB per image and 32 MiB per font; the complete document also obeys the input limit. |
+| Concurrent reception | 4 RAW connections and 16 IPC handlers. |
+| Output workers | One at a time. |
+
+Dimensions and resolutions must be finite and valid. Jobs must be self-contained; fonts, graphics, and stored formats are not cached across tasks. Inputs, diagnostics, and completed history are retained locally, and user output is not automatically deleted. Disk quotas and history cleanup are future work; monitor data-directory usage during trials.
+
+## References
+
+- [PAPPL raster printing callbacks](https://www.msweet.org/pappl/pappl.html#the-raster-printing-callbacks)
+- [PAPPL 1.4.12 source](https://github.com/michaelrsweet/pappl/releases/tag/v1.4.12)
+- [Zebra ZPL Programming Guide](https://www.zebra.com/content/dam/support-dam/en/documentation/unrestricted/guide/software/zpl-zbi2-pg-en.pdf)
+- [OpenSSL source releases](https://www.openssl-library.org/source/)
