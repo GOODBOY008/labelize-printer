@@ -12,7 +12,7 @@ Labelize Printer is a desktop label workspace and local virtual printer for Wind
 
 It uses the [Labelize rendering engine](https://github.com/GOODBOY008/labelize) to parse and render printer-language files. The desktop app adds printer setup, output settings, job history, and a visual label designer. Labelize itself is also available as a library, CLI, HTTP service, WebAssembly package, and Android library.
 
-> **In development:** A new blue-and-white, multi-tab workspace adds automatic previews, local draft recovery, per-tab export options, and a reorganized designer. These changes are not yet in the v0.2.0 installers. The usage below describes the development branch; see the [v0.2.0 README](https://github.com/GOODBOY008/labelize-printer/blob/v0.2.0/README.md) for the current release. Verified environments and remaining checks are recorded in [Acceptance](ACCEPTANCE.md).
+> **New in v0.3.0:** A blue-and-white, multi-tab workspace with automatic previews, local draft recovery, per-tab export options, and a reorganized designer. Open files and designs side by side, resume your workspace after a restart, and export through the existing background service. See [Acceptance](ACCEPTANCE.md) for verified environments and remaining checks.
 
 ## What you can do
 
@@ -22,7 +22,7 @@ It uses the [Labelize rendering engine](https://github.com/GOODBOY008/labelize) 
 | Job management | Choose an output folder, inspect results, open saved files, and retry failed jobs. | v0.1.2 |
 | Label files | Open ZPL, EPL, TSPL/TSC, CPCL, or DPL; edit supported text files and preview each page. | v0.2.0 |
 | Visual design | Add text, Code 128, QR codes, rectangles, and images; move objects and edit their dimensions. | v0.2.0 |
-| Multi-tab workspace | Independent edits, automatic previews, recent files, and local session/draft recovery. | Unreleased |
+| Multi-tab workspace | Independent edits, automatic previews, recent files, and local session/draft recovery. | v0.3.0 |
 | Portable templates | Save editable `.labelize.json` templates with embedded images and imported fonts. | v0.2.0 |
 
 ## Install
@@ -61,7 +61,7 @@ Defaults are PDF, the `Labelize` folder under Documents, a 102 × 152 mm label, 
 
 ## Open and design labels
 
-The current release includes file previews and a visual designer. To try the redesigned **Workspace** described here, [build this development branch from source](DEVELOPMENT.md#build-and-run).
+Install v0.3.0 or later to use the multi-tab **Workspace** described here. Installers are available from [GitHub Releases](https://github.com/GOODBOY008/labelize-printer/releases); you can also [build from source](DEVELOPMENT.md#build-and-run).
 
 ### Open a label file
 
@@ -83,7 +83,7 @@ Existing printer-language files remain source documents; they are not reconstruc
 | --- | --- |
 | Cmd/Ctrl+O | Open a label file or template |
 | Cmd/Ctrl+N | Create a design |
-| Cmd/Ctrl+S / Shift+S | Save / Save as |
+| Cmd/Ctrl+S / Cmd/Ctrl+Shift+S | Save / Save as |
 | Cmd/Ctrl+E | Export the active document |
 | Cmd/Ctrl+W | Close the active tab |
 | Ctrl+Tab / Ctrl+Shift+Tab | Next / previous document |

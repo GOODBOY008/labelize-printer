@@ -201,8 +201,8 @@ Parser fixes belong upstream in Labelize and require its rendering regression su
 
 ## Upgrades and diagnostics
 
-Before replacing an installed build, let jobs finish, close the desktop, and run the installed daemon's `stop` command. Keep desktop, daemon, and native adapter versions matched. Upgrades preserve settings, input snapshots, and output. Before manually removing an application bundle, remove its queue and login service through Setup or the daemon's `uninstall` command.
+Before replacing an installed build, let jobs finish, close the desktop, and run the installed daemon's `stop` command. Keep desktop, daemon, and native adapter versions matched. Upgrades preserve settings, input snapshots, and output. Before manually removing an application bundle, remove its queue and login service through **Settings → System printer** or the daemon's `uninstall` command.
 
-Set `LABELIZE_PRINTER_DEBUG=1` and launch the desktop from a terminal to send startup diagnostics to stderr. For job failures, inspect **Recent jobs** or `job TASK_UUID`; inputs and diagnostics are retained for retry. Include the OS, architecture, source commit or installer version, and input route in an issue.
+Set `LABELIZE_PRINTER_DEBUG=1` and launch the desktop from a terminal to send startup diagnostics to stderr. For job failures, inspect **Jobs** or `job TASK_UUID`; inputs and diagnostics are retained for retry. Include the OS, architecture, source commit or installer version, and input route in an issue.
 
 The [build workflow](.github/workflows/build.yml) produces Windows x64, macOS ARM64/x86_64, and Debian 12 amd64 installers. Its build and protocol checks are separate from the [remaining native acceptance work](ACCEPTANCE.md#remaining-acceptance-work).
