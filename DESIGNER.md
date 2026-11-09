@@ -2,7 +2,7 @@
 
 [README](README.md) · [Architecture](ARCHITECTURE.md) · [Acceptance](ACCEPTANCE.md)
 
-This guide describes the expanded designer in the **unreleased source**. Released v0.3.0 includes text, Code 128, QR codes, rectangles, and images. Build the current source to use the additional tools.
+This guide describes the expanded designer in **Labelize Studio v0.4.0**. Existing Labelize Printer templates remain compatible.
 
 Choose **Workspace → New design**, or open the [showcase template](examples/designer-showcase.labelize.json). Objects are listed from front to back. Select an object to see the properties appropriate to its type. Preview and PDF/PNG export use the same rendering rules.
 

@@ -2,6 +2,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 version="$(python3 scripts/package-version.py)"
+# Earlier Printer bundles used build number 5; keep Apple's bundle ordering monotonic.
+build_version="$(python3 -c 'import sys; a,b,c=map(int,sys.argv[1].split(".")); print(f"{a+6}.{b}.{c}")' "$version")"
 profile="${1:-release}"
 stage="dist/macos-$profile"
 architecture="${2:-$(uname -m)}"
@@ -12,10 +14,11 @@ if [[ "$architecture" != "$(uname -m)" ]]; then
   binary_dir="target/$rust_arch-apple-darwin/$profile"
   stage="dist/macos-$architecture-$profile"
 fi
-app="${LABELIZE_PRINTER_MACOS_STAGE:-$stage}/Labelize Printer.app"
+app="${LABELIZE_PRINTER_MACOS_STAGE:-$stage}/Labelize Studio.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources/platform"
 cp "$binary_dir/labelize-printer" "$binary_dir/labelize-printer-daemon" "$binary_dir/labelize-printer-ipp" "$binary_dir/labelize-printer-updater" "$app/Contents/MacOS/"
 cp platform/macos/Info.plist "$app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $build_version" "$app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $version" "$app/Contents/Info.plist"
 cp platform/macos/LabelizePrinter.icns "$app/Contents/Resources/"
 icon_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$app/Contents/Info.plist")"
@@ -32,6 +35,10 @@ for name in labelize-printer-ipp labelize-printer-daemon labelize-printer-update
 done
 codesign --force --sign - "$app"
 codesign --verify --deep --strict "$app"
-pkgbuild --component "$app" --install-location /Applications --identifier com.labelize.printer \
-  --version "$version" "dist/LabelizePrinter-$version-macos-$architecture-$profile.pkg"
+payload="$(mktemp -d "${TMPDIR:-/tmp}/labelize-studio-package.XXXXXX")"
+trap 'rm -rf "$payload"' EXIT
+ditto "$app" "$payload/Labelize Studio.app"
+pkgbuild --root "$payload" --component-plist platform/macos/components.plist \
+  --scripts platform/macos/installer-scripts --install-location /Applications --identifier com.labelize.printer \
+  --version "$version" "dist/LabelizeStudio-$version-macos-$architecture-$profile.pkg"
 echo 'Unsigned internal trial package. Open the app to finish per-user queue setup.'

@@ -249,13 +249,16 @@ pub fn receipt_version(expected: &str) -> Result<()> {
 pub fn installation_notice() {
     #[cfg(target_os = "macos")]
     {
-        let _ = Command::new("/usr/bin/osascript").args(["-e", "display dialog \"安装器仍在运行，请完成或关闭它后再打开应用。\\nAn installer is still running. Finish or close it before reopening Labelize Printer.\" with title \"Labelize Printer\" buttons {\"OK\"} default button 1"]).status();
+        let _ = Command::new("/usr/bin/osascript").args(["-e", "display dialog \"安装器仍在运行，请完成或关闭它后再打开应用。\\nAn installer is still running. Finish or close it before reopening Labelize Studio.\" with title \"Labelize Studio\" buttons {\"OK\"} default button 1"]).status();
     }
     #[cfg(windows)]
     unsafe {
         use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONINFORMATION, MB_OK};
-        let message: Vec<u16> = "An installer is still running. Finish or close it before reopening Labelize Printer.\0".encode_utf16().collect();
-        let title: Vec<u16> = "Labelize Printer\0".encode_utf16().collect();
+        let message: Vec<u16> =
+            "An installer is still running. Finish or close it before reopening Labelize Studio.\0"
+                .encode_utf16()
+                .collect();
+        let title: Vec<u16> = "Labelize Studio\0".encode_utf16().collect();
         MessageBoxW(
             std::ptr::null_mut(),
             message.as_ptr(),
@@ -265,7 +268,7 @@ pub fn installation_notice() {
     }
     #[cfg(target_os = "linux")]
     {
-        let _ = Command::new("zenity").args(["--info", "--title=Labelize Printer", "--text=An installer is still running. Finish or close it before reopening Labelize Printer."]).status();
+        let _ = Command::new("zenity").args(["--info", "--title=Labelize Studio", "--text=An installer is still running. Finish or close it before reopening Labelize Studio."]).status();
     }
 }
 

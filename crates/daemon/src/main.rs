@@ -24,7 +24,7 @@ use std::{
 #[derive(Parser)]
 #[command(
     version,
-    about = "Labelize Printer background service and local control client"
+    about = "Labelize Studio background service and local control client"
 )]
 struct Cli {
     #[arg(long, global = true)]
@@ -337,7 +337,7 @@ fn serve(paths: AppPaths) -> Result<()> {
         });
     }
     let connections = Arc::new(AtomicUsize::new(0));
-    eprintln!("Labelize Printer ready; data={}", paths.root.display());
+    eprintln!("Labelize Studio ready; data={}", paths.root.display());
     for connection in listener.incoming() {
         let connection = match connection {
             Ok(c) => c,

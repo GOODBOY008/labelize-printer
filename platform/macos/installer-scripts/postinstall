@@ -1,0 +1,17 @@
+#!/bin/bash
+set -euo pipefail
+volume="${3:-/}"
+applications="${volume%/}/Applications"
+studio="$applications/Labelize Studio.app"
+legacy="$applications/Labelize Printer.app"
+# Delete only the known old application, and only after the new bundle is in place.
+# User data, queue registration and LaunchAgents are never removed by this script.
+[[ ! -L "$studio" && -x "$studio/Contents/MacOS/labelize-printer" ]]
+identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$studio/Contents/Info.plist")"
+[[ "$identifier" == com.labelize.printer ]]
+if [[ -d "$legacy" && ! -L "$legacy" ]]; then
+  identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$legacy/Contents/Info.plist" 2>/dev/null || true)"
+  if [[ "$identifier" == com.labelize.printer ]]; then
+    /bin/rm -rf "$legacy"
+  fi
+fi

@@ -7,4 +7,4 @@ Project documentation is now maintained in English. This file preserves the prev
 - [Architecture](ARCHITECTURE.md): data flow and component responsibilities.
 - [Acceptance record](ACCEPTANCE.md): verified environments and outstanding checks.
 
-The application still supports English and Simplified Chinese. Use the title-bar language button to switch languages.
+Labelize Studio still supports English and Simplified Chinese. Use the language button above Settings in the sidebar to switch languages. See [Migration](MIGRATION.md) when upgrading from Labelize Printer.

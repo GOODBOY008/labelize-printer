@@ -1,0 +1,25 @@
+#!/bin/bash
+set -euo pipefail
+volume="${3:-/}"
+applications="${volume%/}/Applications"
+for product in 'Labelize Printer' 'Labelize Studio'; do
+  app="$applications/$product.app"
+  if [[ -L "$app" ]]; then
+    echo "Move the $product application symlink before installing Labelize Studio." >&2
+    exit 1
+  fi
+done
+studio="$applications/Labelize Studio.app"
+if [[ -e "$studio" ]]; then
+  identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$studio/Contents/Info.plist" 2>/dev/null || true)"
+  if [[ "$identifier" != com.labelize.printer ]]; then
+    echo 'The destination belongs to another application. Move it before installing.' >&2
+    exit 1
+  fi
+fi
+# Do not stop or replace an application that may have unsaved drafts or active jobs.
+# The in-app updater runs its handoff helper outside both installed bundles.
+if [[ "$volume" == / ]] && /usr/bin/pgrep -f '^/Applications/Labelize (Printer|Studio)\.app/Contents/MacOS/labelize-printer(-daemon|-ipp|-updater)?( |$)' >/dev/null; then
+  echo 'Quit Labelize and stop its background service before upgrading. See MIGRATION.md.' >&2
+  exit 1
+fi

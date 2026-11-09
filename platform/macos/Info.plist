@@ -2,8 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleIdentifier</key><string>com.labelize.printer</string>
-<key>CFBundleName</key><string>Labelize Printer</string>
-<key>CFBundleDisplayName</key><string>Labelize Printer</string>
+<key>CFBundleName</key><string>Labelize Studio</string>
+<key>CFBundleDisplayName</key><string>Labelize Studio</string>
 <key>CFBundleExecutable</key><string>labelize-printer</string>
 <key>CFBundleIconFile</key><string>LabelizePrinter.icns</string>
 <key>CFBundlePackageType</key><string>APPL</string>

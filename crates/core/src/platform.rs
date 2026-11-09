@@ -9,6 +9,8 @@ use std::{
 };
 
 pub const QUEUE_NAME: &str = "LabelizePrinter";
+// Queue, IPC, data and service identifiers are intentionally retained across the
+// Labelize Studio rename. Only the macOS application's on-disk path moves.
 pub const DRIVER_URL: &str =
     "https://www.zebra.com/us/en/support-downloads/printers/printer-drivers.html";
 
@@ -273,7 +275,7 @@ pub fn set_autostart(paths: &AppPaths, enabled: bool) -> Result<()> {
         let file = user_unit_path()?;
         if enabled {
             fs::create_dir_all(file.parent().unwrap())?;
-            let unit = format!("[Unit]\nDescription=Labelize Printer\nPartOf=graphical-session.target\nAfter=graphical-session.target\n\n[Service]\nType=simple\nExecStart={} serve\nEnvironment=LABELIZE_PRINTER_HOME={}\nRestart=on-failure\nRestartSec=3\n\n[Install]\nWantedBy=graphical-session.target\n",
+            let unit = format!("[Unit]\nDescription=Labelize Studio\nPartOf=graphical-session.target\nAfter=graphical-session.target\n\n[Service]\nType=simple\nExecStart={} serve\nEnvironment=LABELIZE_PRINTER_HOME={}\nRestart=on-failure\nRestartSec=3\n\n[Install]\nWantedBy=graphical-session.target\n",
                 systemd_quote(&daemon), systemd_quote(&paths.root));
             atomic_write(&file, unit.as_bytes())?;
             checked(Command::new("systemctl").args(["--user", "daemon-reload"]))?;
@@ -343,6 +345,8 @@ fn shell_quote(s: &str) -> String {
 
 pub fn ensure_daemon(paths: &AppPaths) -> Result<()> {
     crate::maintenance::require_ready(paths)?;
+    #[cfg(target_os = "macos")]
+    refresh_studio_launch_agent(paths)?;
     if ipc::request(paths, Request::Status).is_ok() {
         return Ok(());
     }
@@ -375,4 +379,62 @@ pub fn ensure_daemon(paths: &AppPaths) -> Result<()> {
         "Background service did not start; see {}",
         paths.root.join("daemon.log").display()
     )
+}
+
+#[cfg(target_os = "macos")]
+fn refresh_studio_launch_agent(paths: &AppPaths) -> Result<()> {
+    let file = launch_agent_path()?;
+    let daemon = sibling_binary("labelize-printer-daemon")?;
+    if !file.is_file()
+        || daemon
+            != Path::new("/Applications/Labelize Studio.app/Contents/MacOS/labelize-printer-daemon")
+    {
+        return Ok(());
+    }
+    let json = checked(
+        Command::new("/usr/bin/plutil")
+            .args(["-convert", "json", "-o", "-"])
+            .arg(&file),
+    )?;
+    let record: serde_json::Value = serde_json::from_str(&json)?;
+    if studio_launch_agent_needs_refresh(&record, &paths.root) {
+        set_autostart(paths, true)?;
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn studio_launch_agent_needs_refresh(record: &serde_json::Value, root: &std::path::Path) -> bool {
+    record["Label"] == "com.labelize.printer"
+        && record["ProgramArguments"][0]
+            == "/Applications/Labelize Printer.app/Contents/MacOS/labelize-printer-daemon"
+        && record["EnvironmentVariables"]["LABELIZE_PRINTER_HOME"].as_str() == root.to_str()
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use super::*;
+    #[test]
+    fn only_refreshes_the_existing_users_legacy_launch_agent() {
+        let root = std::path::Path::new("/users/test/LabelizePrinter");
+        let mut record = serde_json::json!({
+            "Label": "com.labelize.printer",
+            "ProgramArguments": ["/Applications/Labelize Printer.app/Contents/MacOS/labelize-printer-daemon", "serve"],
+            "EnvironmentVariables": {"LABELIZE_PRINTER_HOME": root}
+        });
+        assert!(studio_launch_agent_needs_refresh(&record, root));
+        assert!(!studio_launch_agent_needs_refresh(
+            &record,
+            std::path::Path::new("/private/qa")
+        ));
+        record["ProgramArguments"][0] =
+            "/Applications/Labelize Studio.app/Contents/MacOS/labelize-printer-daemon".into();
+        assert!(!studio_launch_agent_needs_refresh(&record, root));
+        record["ProgramArguments"][0] = "/private/qa/labelize-printer-daemon".into();
+        assert!(!studio_launch_agent_needs_refresh(&record, root));
+        assert!(!studio_launch_agent_needs_refresh(
+            &serde_json::json!({}),
+            root
+        ));
+    }
 }

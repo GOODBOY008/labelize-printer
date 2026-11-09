@@ -2,13 +2,13 @@
 
 [README](README.md) · [Architecture](ARCHITECTURE.md) · [Development](DEVELOPMENT.md)
 
-This describes the current source tree. The first updater-enabled release needs a one-time manual installer or Homebrew upgrade; the published v0.3.0 app has no update UI. After that first manual upgrade, sign out and back in once to ensure an older per-user background process is replaced along with the desktop.
+The first updater-enabled version is **Labelize Studio v0.4.0**. Upgrade once using an installer or Homebrew; v0.3.0 has no update UI. Follow [Migration](MIGRATION.md) to stop the old background service before installation and reopen Studio afterward.
 
 ## User flow
 
 Settings → Software update shows the application version, last check time, release notes, download progress, and recovery actions. Startup checks are asynchronous, stable-only, and limited to one attempt per 24 hours. The setting defaults to enabled. Manual checks bypass that interval. Errors, rate limits, and offline operation do not block the workspace or daemon polling. No labels, settings, or job contents are uploaded to GitHub.
 
-Downloads and installation require separate user actions. Downloads use the fixed `GOODBOY008/labelize-printer` repository over HTTPS and select a strictly newer semantic version. The updater rejects drafts, prereleases, missing/duplicate assets, invalid asset URLs, missing SHA256 digests, oversized metadata, truncated downloads, and hash mismatches. It verifies the checksum manifest's own GitHub digest, then requires the installer's GitHub digest and manifest entry to agree. These are integrity checks, not code signing; current installers remain unsigned.
+Downloads and installation require separate user actions. Downloads use the fixed `GOODBOY008/labelize-studio` repository over HTTPS and select a strictly newer semantic version. The updater rejects drafts, prereleases, missing/duplicate assets, invalid asset URLs, missing SHA256 digests, oversized metadata, truncated downloads, and hash mismatches. It verifies the checksum manifest's own GitHub digest, then requires the installer's GitHub digest and manifest entry to agree. These are integrity checks, not code signing; current installers remain unsigned.
 
 Partial files use random names under the user's private `updates/` directory. A per-user download lock prevents simultaneous writers. Cancellation removes the partial file; startup removes orphaned UUID `.part` files only when no download owns the lock. Previously verified installers are hashed again before reuse and again by the installation helper.
 
@@ -37,12 +37,12 @@ Normal RAW EOF semantics and IPP job completion semantics are unchanged. Printin
 
 ## Completion and recovery
 
-After completing or cancelling the installer, reopen Labelize Printer. A matching target version is verified automatically; cancellation requires the explicit **Installation cancelled; resume current version** action. Verification checks the daemon, updater, Unix IPP component, and system package receipt against the running desktop version. Linux also checks dpkg's POSIX record locks before resuming. A mixed or partially configured installation remains blocked and instructs the user to rerun the full installer.
+After completing or cancelling the installer, reopen Labelize Studio. A matching target version is verified automatically; cancellation requires the explicit **Installation cancelled; resume current version** action. Verification checks the daemon, updater, Unix IPP component, and system package receipt against the running desktop version. Linux also checks dpkg's POSIX record locks before resuming. A mixed or partially configured installation remains blocked and instructs the user to rerun the full installer.
 
 The handoff record is removed only after verification, then the existing service and workspace recovery paths resume. Settings, queue registration, job history and local drafts are retained. Handoff logs and requests are stored under `updates/<request UUID>/` for diagnosis. A damaged pending record is retained for diagnosis rather than silently bypassed.
 
 ## Release contract
 
-Keep the four installer names stable: Windows x64 EXE, macOS ARM64 and x86_64 PKG, Linux amd64 DEB. Include the updater binary and matching `--version` output from every component. Upload all installers and `SHA256SUMS` before marking a stable release latest. Every asset, including `SHA256SUMS`, must have a GitHub `sha256:` digest. Update the Homebrew tap with the same PKG hashes.
+From v0.4.0 use the Studio installer names in [Migration](MIGRATION.md): Windows x64 EXE, macOS ARM64 and x86_64 PKG, Linux amd64 DEB. Include the updater binary and matching `--version` output from every component. Upload all installers and `SHA256SUMS` before marking a stable release latest. Every asset, including `SHA256SUMS`, must have a GitHub `sha256:` digest. Update the Homebrew tap with the same PKG hashes.
 
 The updater does not require a custom release server, delta packages, GitHub login, a background GUI, or an automatic rollback mechanism. Native installer success/cancellation, system authorization, and actual upgrades need platform acceptance in addition to CI builds and isolated handoff tests.

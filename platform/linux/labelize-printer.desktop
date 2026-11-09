@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=Labelize Printer
-Comment=Save label printing to PDF or PNG
+Name=Labelize Studio
+Comment=Design labels, preview printer code and export PDF or PNG
 Exec=/opt/labelize-printer/labelize-printer
 Icon=labelize-printer
 Categories=Utility;Office;

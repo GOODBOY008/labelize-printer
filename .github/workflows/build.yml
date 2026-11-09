@@ -56,6 +56,7 @@ jobs:
       - run: cargo test -p labelize-printer --lib --release --locked
       - run: python3 scripts/update-smoke.py --profile release
       - run: python3 scripts/smoke.py --profile release
+      - run: python3 scripts/test-macos-migration.py
       - run: python3 scripts/collect-licenses.py
       - run: bash scripts/package-macos.sh
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

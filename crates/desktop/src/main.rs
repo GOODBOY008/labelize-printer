@@ -26,7 +26,7 @@ actions!(labelize_printer, [Quit]);
 fn apply_language(language: Language, cx: &mut App) {
     gpui_component::set_locale(language.locale());
     cx.set_menus(vec![Menu {
-        name: "Labelize Printer".into(),
+        name: "Labelize Studio".into(),
         items: vec![MenuItem::action(language.text(Text::Quit), Quit)],
     }]);
 }
@@ -204,7 +204,7 @@ fn main() -> anyhow::Result<()> {
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     titlebar: Some(TitlebarOptions {
-                        title: Some("Labelize Printer".into()),
+                        title: Some("Labelize Studio".into()),
                         ..TitleBar::title_bar_options()
                     }),
                     window_decorations: Some(WindowDecorations::Client),
@@ -238,7 +238,7 @@ fn main() -> anyhow::Result<()> {
                     cx.new(|cx| Root::new(view, window, cx))
                 },
             )
-            .expect("Unable to open Labelize Printer window");
+            .expect("Unable to open Labelize Studio window");
         #[cfg(target_os = "linux")]
         if std::env::var_os("WAYLAND_DISPLAY").is_none() {
             // GPUI 0.2.2's X11 swapchain can retain the pre-map drawable until

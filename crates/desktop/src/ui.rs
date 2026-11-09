@@ -651,13 +651,13 @@ impl PrinterApp {
                                     div()
                                         .text_sm()
                                         .font_weight(FontWeight::SEMIBOLD)
-                                        .child("Labelize"),
+                                        .child("Labelize Studio"),
                                 )
                                 .child(
                                     div()
                                         .text_size(px(10.))
                                         .text_color(rgb(MUTED))
-                                        .child("PRINTER & STUDIO"),
+                                        .child("LABEL WORKSPACE"),
                                 ),
                         )
                     }),
@@ -1655,7 +1655,7 @@ impl Render for PrinterApp {
                             div()
                                 .text_xs()
                                 .text_color(rgb(MUTED))
-                                .child("Labelize Printer"),
+                                .child("Labelize Studio"),
                         ),
                     ),
             )

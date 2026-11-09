@@ -23,7 +23,7 @@ fn main() {
     #[cfg(windows)]
     embed_resource::compile_for(&resource, ["labelize-printer"], embed_resource::NONE)
         .manifest_required()
-        .expect("Embed the Labelize Printer icon");
+        .expect("Embed the Labelize Studio icon");
 
     #[cfg(not(windows))]
     {

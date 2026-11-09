@@ -157,3 +157,31 @@ Use all four installers from the same successful build. Record the source commit
 | Upgrade and fault recovery | Preserve settings, history, and output when upgrading from earlier releases, including 0.1.0. Check unwritable folders, changed permissions, full disks, port conflicts, interrupted reception, renderer crashes, cancellation, daemon restart, and power loss during reception. Verify complete queue/login-service cleanup after repair/removal. |
 
 Output failure and retry handling are implemented, but unexecuted fault scenarios are not marked as passed. If the database disk is completely full, failure recording may also fail; free space and restart to apply the recovery rules.
+
+
+## Labelize Studio migration — 2026-11-10
+
+The v0.4.0 product name is Labelize Studio; the system queue remains Labelize Printer.
+The existing data directory, executable names, IPC, template formats, login-service
+identifiers, and OS package identities are retained. See [Migration](MIGRATION.md).
+
+Local validation on macOS 27.2 ARM64:
+
+- Workspace build, formatting, and workspace/all-target Clippy passed.
+- Core tests (21), desktop library tests (15), and updater tests (11; live release
+  download separately exercised at publication) passed. Existing template pixels,
+  multi-language PDF/PNG output, drafts, and independent tab settings are covered.
+- All 15 backend smoke checks and six updater handoff smoke groups passed with
+  isolated user data. No system queue was replaced during these checks.
+- Four disposable-volume installer tests cover old-bundle cleanup, failed payload,
+  foreign bundles/symlinks, and data preservation. The LaunchAgent regression only
+  accepts the old canonical app path with the same user's data directory.
+- The macOS package was built and expanded: it installs `Labelize Studio.app`,
+  disables bundle relocation, retains receipt/bundle ID `com.labelize.printer`,
+  and includes both migration scripts and all four executables.
+
+Four-platform CI build evidence and downloadable installer hashes are recorded
+with the [v0.4.0 release](https://github.com/GOODBOY008/labelize-studio/releases/tag/v0.4.0).
+Fixture and CI checks do not establish a real Homebrew upgrade, system Installer
+completion, native Windows x64/ZDesigner printing, Intel desktop, macOS 13, or
+Ubuntu desktop acceptance. Those manual checks remain outstanding.

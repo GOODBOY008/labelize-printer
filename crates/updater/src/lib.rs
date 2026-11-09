@@ -15,10 +15,11 @@ use std::{
     time::Duration,
 };
 
-pub const RELEASES: &str = "https://github.com/GOODBOY008/labelize-printer/releases";
-pub const API: &str = "https://api.github.com/repos/GOODBOY008/labelize-printer/releases/latest";
+pub const RELEASES: &str = "https://github.com/GOODBOY008/labelize-studio/releases";
+const LEGACY_RELEASES: &str = "https://github.com/GOODBOY008/labelize-printer/releases";
+pub const API: &str = "https://api.github.com/repos/GOODBOY008/labelize-studio/releases/latest";
 pub const BREW_COMMAND: &str =
-    "brew update && brew upgrade --cask goodboy008/labelize-printer/labelize-printer";
+    "brew tap goodboy008/labelize-studio && brew update && brew upgrade --cask goodboy008/labelize-studio/labelize-studio";
 const MAX_INSTALLER: u64 = 1024 * 1024 * 1024;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -36,11 +37,26 @@ pub enum Target {
 }
 impl Target {
     pub fn asset(&self, v: &str) -> String {
+        // Historical releases keep their original assets after the repository rename.
+        // The version boundary also prevents accepting legacy names for new releases.
+        let legacy = Version::parse(v).is_ok_and(|v| v < Version::new(0, 4, 0));
+        let product = if legacy {
+            "LabelizePrinter"
+        } else {
+            "LabelizeStudio"
+        };
         match self {
-            Self::MacArm => format!("LabelizePrinter-{v}-macos-arm64-release.pkg"),
-            Self::MacIntel => format!("LabelizePrinter-{v}-macos-x86_64-release.pkg"),
-            Self::WindowsX64 => format!("LabelizePrinter-{v}-windows-x64.exe"),
-            Self::LinuxX64 => format!("labelize-printer_{v}_amd64.deb"),
+            Self::MacArm => format!("{product}-{v}-macos-arm64-release.pkg"),
+            Self::MacIntel => format!("{product}-{v}-macos-x86_64-release.pkg"),
+            Self::WindowsX64 => format!("{product}-{v}-windows-x64.exe"),
+            Self::LinuxX64 => {
+                let package = if legacy {
+                    "labelize-printer"
+                } else {
+                    "labelize-studio"
+                };
+                format!("{package}_{v}_amd64.deb")
+            }
         }
     }
 }
@@ -95,9 +111,9 @@ fn digest(asset: &Asset) -> Result<String> {
     Ok(digest.to_ascii_lowercase())
 }
 fn asset_url(url: &str, tag: &str) -> Result<()> {
-    let prefix = format!("{RELEASES}/download/{tag}/");
-    let name = url
-        .strip_prefix(&prefix)
+    let name = [RELEASES, LEGACY_RELEASES]
+        .iter()
+        .find_map(|base| url.strip_prefix(&format!("{base}/download/{tag}/")))
         .context("Asset does not belong to the selected official release")?;
     ensure!(
         !name.is_empty() && !name.contains(['/', '?', '#', '%', '\\']),
@@ -119,7 +135,9 @@ pub fn select_release(release: Release, current: &str, target: Target) -> Result
         return Ok(None);
     }
     ensure!(
-        release.html_url == format!("{RELEASES}/tag/{}", release.tag_name),
+        [RELEASES, LEGACY_RELEASES]
+            .iter()
+            .any(|base| release.html_url == format!("{base}/tag/{}", release.tag_name)),
         "Unexpected release page"
     );
     let find = |name: &str| -> Result<Asset> {
@@ -162,7 +180,7 @@ fn agent(total: Duration) -> ureq::Agent {
     ureq::Agent::config_builder()
         .https_only(true)
         .max_redirects(5)
-        .user_agent(concat!("LabelizePrinter/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("LabelizeStudio/", env!("CARGO_PKG_VERSION")))
         .timeout_global(Some(total))
         .timeout_connect(Some(Duration::from_secs(10)))
         .timeout_resolve(Some(Duration::from_secs(10)))
@@ -281,7 +299,7 @@ fn cache_lock(paths: &AppPaths) -> Result<fs::File> {
         .write(true)
         .open(root.join("download.lock"))?;
     lock.try_lock_exclusive()
-        .context("Another Labelize Printer window is downloading an update")?;
+        .context("Another Labelize Studio window is downloading an update")?;
     Ok(lock)
 }
 fn remove_partial_files(paths: &AppPaths) -> Result<()> {
@@ -394,12 +412,14 @@ pub fn brew_installed(bytes: &[u8]) -> Result<bool> {
         .and_then(|v| v.as_array())
         .context("Invalid Homebrew inventory")?;
     Ok(casks.iter().any(|c| {
-        c["token"] == "labelize-printer"
-            && c.get("installed").is_some_and(|v| match v {
-                serde_json::Value::String(s) => !s.is_empty(),
-                serde_json::Value::Array(a) => !a.is_empty(),
-                _ => false,
-            })
+        matches!(
+            c["token"].as_str(),
+            Some("labelize-printer" | "labelize-studio")
+        ) && c.get("installed").is_some_and(|v| match v {
+            serde_json::Value::String(s) => !s.is_empty(),
+            serde_json::Value::Array(a) => !a.is_empty(),
+            _ => false,
+        })
     }))
 }
 
@@ -488,6 +508,46 @@ mod tests {
         assert!(Target::LinuxX64.asset("1.0.0").ends_with("_amd64.deb"));
     }
     #[test]
+    fn studio_migration_keeps_historical_assets_and_official_repository_boundary() {
+        for target in [
+            Target::MacArm,
+            Target::MacIntel,
+            Target::WindowsX64,
+            Target::LinuxX64,
+        ] {
+            assert!(target
+                .asset("0.3.0")
+                .to_ascii_lowercase()
+                .contains("printer"));
+            assert!(target
+                .asset("0.4.0")
+                .to_ascii_lowercase()
+                .contains("studio"));
+        }
+        for base in [RELEASES, LEGACY_RELEASES] {
+            let mut old = release("0.3.0");
+            old.html_url = format!("{base}/tag/v0.3.0");
+            for a in &mut old.assets {
+                a.browser_download_url = format!("{base}/download/v0.3.0/{}", a.name);
+            }
+            assert!(select_release(old, "0.2.0", Target::MacArm)
+                .unwrap()
+                .is_some());
+        }
+        let mut wrong_name = release("0.4.0");
+        wrong_name.assets[0].name = "LabelizePrinter-0.4.0-macos-arm64-release.pkg".into();
+        assert!(select_release(wrong_name, "0.3.0", Target::MacArm).is_err());
+        let mut wrong_owner = release("0.4.0");
+        wrong_owner.html_url =
+            "https://github.com/other/labelize-studio/releases/tag/v0.4.0".into();
+        assert!(select_release(wrong_owner, "0.3.0", Target::MacArm).is_err());
+        assert!(asset_url(
+            "https://github.com/GOODBOY008/labelize-studio-other/releases/download/v0.4.0/app",
+            "v0.4.0"
+        )
+        .is_err());
+    }
+    #[test]
     fn checksum_and_stream_fail_closed() {
         let hash = format!("{:x}", Sha256::digest(b"abc"));
         assert_eq!(
@@ -529,6 +589,10 @@ mod tests {
     }
     #[test]
     fn homebrew_ownership_requires_installed_record() {
+        assert!(
+            brew_installed(br#"{"casks":[{"token":"labelize-studio","installed":"0.4.0"}]}"#)
+                .unwrap()
+        );
         assert!(
             brew_installed(br#"{"casks":[{"token":"labelize-printer","installed":"0.3.0"}]}"#)
                 .unwrap()

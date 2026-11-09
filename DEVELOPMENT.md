@@ -4,6 +4,10 @@
 
 Run the commands below from the repository root. Build instructions describe the current source tree; published installers may contain an earlier feature set.
 
+The product is **Labelize Studio**. Existing crate, executable, environment-variable,
+service, and data-directory names retain `labelize-printer` compatibility identifiers.
+See [Migration](MIGRATION.md) for the boundary between branding and persistent identity.
+
 ## Prerequisites
 
 - Rust 1.99 or later. CI pins Rust 1.99.1; use `--locked` to keep dependency versions reproducible.

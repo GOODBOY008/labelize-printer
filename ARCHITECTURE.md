@@ -2,7 +2,7 @@
 
 [README](README.md) · [Development guide](DEVELOPMENT.md) · [Acceptance record](ACCEPTANCE.md)
 
-Labelize Printer separates input acquisition, job management, rendering, and file output. Printer-language files use Labelize; system raster pages are already laid out and go directly through raster adaptation and file encoding. LPrint is not a dependency.
+Labelize Studio separates input acquisition, job management, rendering, and file output. Printer-language files use Labelize; system raster pages are already laid out and go directly through raster adaptation and file encoding. LPrint is not a dependency.
 
 ## Data flow
 

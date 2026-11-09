@@ -212,7 +212,7 @@ impl PrinterApp {
         };
         let detail = if let Some(command) = &command {
             format!("{}\n\n{command}\n\n{}", self.t("应用将退出并暂停打印。升级命令会复制到剪贴板，请在终端中执行。", "The app will close and pause printing. The upgrade command will be copied; run it in your terminal."),
-                self.t("完成或取消后，重新打开 Labelize Printer。", "Reopen Labelize Printer after completing or cancelling installation."))
+                self.t("完成或取消后，重新打开 Labelize Studio。", "Reopen Labelize Studio after completing or cancelling installation."))
         } else {
             self.t("标签草稿将保留，打印暂时停止。请在系统安装器中完成安装，然后重新打开应用。试用安装包尚未签名。", "Drafts will be retained and printing paused. Complete the system installer, then reopen the app. Trial installers are unsigned.").into()
         };

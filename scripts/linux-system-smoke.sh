@@ -2,7 +2,7 @@
 set -euo pipefail
 [[ -f /.dockerenv ]]
 version="$(python3 /build/scripts/package-version.py)"
-package="/build/dist/labelize-printer_${version}_amd64.deb"
+package="/build/dist/labelize-studio_${version}_amd64.deb"
 [[ "$(dpkg-deb --field "$package" Version)" == "$version" ]]
 dpkg -i "$package"
 mkdir -p /run/dbus

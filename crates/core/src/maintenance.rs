@@ -24,7 +24,7 @@ impl Admission {
     pub fn require_accepting(&mut self) -> Result<()> {
         ensure!(
             self.accepting(),
-            "An update is being prepared; try again after reopening Labelize Printer"
+            "An update is being prepared; try again after reopening Labelize Studio"
         );
         Ok(())
     }
@@ -67,7 +67,7 @@ pub fn pending(paths: &AppPaths) -> std::path::PathBuf {
     paths.root.join("update-pending.json")
 }
 pub fn require_ready(paths: &AppPaths) -> Result<()> {
-    ensure!(!pending(paths).exists(), "An installation needs verification. Open Software update in Labelize Printer to resume printing.");
+    ensure!(!pending(paths).exists(), "An installation needs verification. Open Software update in Labelize Studio to resume printing.");
     Ok(())
 }
 
