@@ -5,6 +5,7 @@ mod i18n;
 mod studio;
 mod studio_worker;
 mod ui;
+mod workbench;
 mod worker;
 
 use gpui::{prelude::*, *};
@@ -14,8 +15,8 @@ use labelize_printer_core::AppPaths;
 #[cfg(target_os = "linux")]
 use std::time::Duration;
 use ui::{
-    NewLabel, OpenLabel, PrinterApp, SaveLabel, ScrollPageDown, ScrollPageUp, ShowJobs,
-    ShowSettings, ShowSetup, ShowStudio,
+    CloseLabel, ExportLabel, NewLabel, NextLabel, OpenLabel, PreviousLabel, PrinterApp, SaveLabel,
+    SaveLabelAs, ScrollPageDown, ScrollPageUp, ShowJobs, ShowRecent, ShowSettings, ShowStudio,
 };
 
 actions!(labelize_printer, [Quit]);
@@ -83,6 +84,7 @@ fn main() -> anyhow::Result<()> {
         theme.colors.secondary_active = rgb(0xe6edff).into();
         theme.colors.secondary_foreground = rgb(ui::TEXT).into();
         theme.colors.primary = rgb(ui::ACCENT).into();
+        theme.colors.ring = rgb(ui::ACCENT).into();
         theme.colors.primary_hover = rgb(0x254fe0).into();
         theme.colors.primary_active = rgb(0x2045c8).into();
         theme.colors.primary_foreground = rgb(0xffffff).into();
@@ -101,10 +103,36 @@ fn main() -> anyhow::Result<()> {
             KeyBinding::new(&format!("{modifier}-o"), OpenLabel, Some("LabelizePrinter")),
             KeyBinding::new(&format!("{modifier}-n"), NewLabel, Some("LabelizePrinter")),
             KeyBinding::new(&format!("{modifier}-s"), SaveLabel, Some("LabelizePrinter")),
-            KeyBinding::new(&format!("{modifier}-1"), ShowSetup, Some("LabelizePrinter")),
+            KeyBinding::new(
+                &format!("{modifier}-1"),
+                ShowStudio,
+                Some("LabelizePrinter"),
+            ),
+            KeyBinding::new(
+                &format!("{modifier}-shift-s"),
+                SaveLabelAs,
+                Some("LabelizePrinter"),
+            ),
+            KeyBinding::new(
+                &format!("{modifier}-e"),
+                ExportLabel,
+                Some("LabelizePrinter"),
+            ),
+            KeyBinding::new(
+                &format!("{modifier}-w"),
+                CloseLabel,
+                Some("LabelizePrinter"),
+            ),
+            KeyBinding::new("ctrl-tab", NextLabel, Some("LabelizePrinter")),
+            KeyBinding::new("ctrl-shift-tab", PreviousLabel, Some("LabelizePrinter")),
+            KeyBinding::new(
+                &format!("{modifier}-,"),
+                ShowSettings,
+                Some("LabelizePrinter"),
+            ),
             KeyBinding::new(
                 &format!("{modifier}-2"),
-                ShowSettings,
+                ShowRecent,
                 Some("LabelizePrinter"),
             ),
             KeyBinding::new(&format!("{modifier}-3"), ShowJobs, Some("LabelizePrinter")),
@@ -133,12 +161,25 @@ fn main() -> anyhow::Result<()> {
                 |screen| {
                     // Leave room for the taskbar and window frame on small displays.
                     let initial_size = size(
-                        px(1000.0).min(screen.size.width * 0.92),
-                        px(720.0).min(screen.size.height * 0.77),
+                        px(1280.0).min(screen.size.width * 0.92),
+                        px(820.0).min(screen.size.height * 0.85),
                     );
                     Bounds::centered_at(screen.center(), initial_size)
                 },
             );
+        // Development-only viewport override makes layout checks reproducible.
+        #[cfg(debug_assertions)]
+        let bounds = std::env::var("LABELIZE_PRINTER_WINDOW_SIZE")
+            .ok()
+            .and_then(|value| {
+                value
+                    .split_once('x')
+                    .and_then(|(w, h)| Some((w.parse::<f32>().ok()?, h.parse::<f32>().ok()?)))
+            })
+            .filter(|(w, h)| (480.0..=4000.0).contains(w) && (360.0..=3000.0).contains(h))
+            .map_or(bounds, |(w, h)| {
+                Bounds::centered_at(bounds.center(), size(px(w), px(h)))
+            });
         let main_window = cx
             .open_window(
                 WindowOptions {

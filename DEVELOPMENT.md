@@ -36,7 +36,9 @@ cargo build --workspace --locked
 .\target\debug\labelize-printer.exe
 ```
 
-Opening the desktop starts the background service when needed. System-queue installation is a separate action in **Setup**. The service runs as the current user and continues after the desktop closes.
+Debug builds accept `LABELIZE_PRINTER_WINDOW_SIZE=1000x720` (or `1440x900`, `480x360`) for reproducible layout checks. This override is not compiled into release builds. Use a dedicated `LABELIZE_PRINTER_HOME` when checking recovery or failure cases.
+
+Opening the desktop starts the background service when needed. System-queue installation is a separate action in **Settings → System printer**. The service runs as the current user and continues after the desktop closes.
 
 ### Isolate development data
 
@@ -92,10 +94,11 @@ Removing the queue or application does not delete saved output, job history, or 
 ```sh
 cargo fmt --all --check
 cargo test -p labelize-printer-core --locked
+cargo test -p labelize-printer --lib --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 ```
 
-The core tests cover job persistence, output commits, raster metadata, file-language previews, and portable designs. Consult the [acceptance record](ACCEPTANCE.md) for what has actually been run on each platform.
+The desktop library tests cover draft recovery, write failures, source conflicts, stale preview callbacks, and cancellation/priority scheduling without a GPU. These run in each package CI job. The core tests cover job persistence, output commits, raster metadata, file-language previews, and portable designs. Consult the [acceptance record](ACCEPTANCE.md) for what has actually been run on each platform.
 
 ### Background smoke tests
 

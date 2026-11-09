@@ -3530,13 +3530,16 @@ dependencies = [
  "gpui",
  "gpui-component",
  "gpui-component-assets",
+ "image",
  "labelize-printer-core",
  "log",
  "open",
  "raw-window-handle",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
+ "uuid",
  "windows 0.61.3",
 ]
 

@@ -1,6 +1,6 @@
 # Acceptance record
 
-Updated 2026-11-08. [README](README.md) · [Development guide](DEVELOPMENT.md) · [Architecture](ARCHITECTURE.md)
+Updated 2026-11-09. [README](README.md) · [Development guide](DEVELOPMENT.md) · [Architecture](ARCHITECTURE.md)
 
 This record separates builds, automated protocol checks, system printing, and native desktop acceptance. Cross-compilation, a configured CI job, or a container test does not establish desktop compatibility on the corresponding target platform. Results below identify the version or development milestone to which they apply.
 
@@ -44,6 +44,20 @@ These local results cover the implementation committed as [`abe5220`](https://gi
 - **Build checks:** Local Clippy and Windows x64 GNU target checking passed. The new workspace has not been verified on Windows or Linux desktops. IME composition and file dropping are not counted as passed; OS file associations are not registered.
 
 The vendored Labelize parsers and renderer were unchanged for this feature. Direct physical-printer submission, reconstructing design objects from printer-language source, and exporting designs as printer commands are outside this implementation milestone.
+
+## A workspace redesign (unreleased)
+
+This milestone builds on `7dae87c84f6e76ad59b32bba1428c756492066bc` and is not included in the published v0.2.0 packages. The local preview uses its own app bundle and data directory under `.cache/workbench-a`; it does not replace the installed app or change its system queue.
+
+- **Automated desktop state checks:** Nine tests cover binary/raw and invalid-field recovery, independent per-tab options, close-time versus delayed autosave ordering, corrupt manifests and isolated damaged drafts, write failure, source conflict detection, path traversal rejection, recent-file deduplication/retention, preview cancellation/priority, and stale callbacks after restarting the same document revision.
+- **Core and background checks:** All 11 core integration tests and all 15 local smoke checks passed. Coverage includes five printer languages, PDF/PNG dimensions and pixels, RAW job boundaries and copies, crash/retry, service restart, IPP failures, raster order/polarity, and port conflicts. No Labelize parser or renderer changes were made.
+- **Native macOS documents and output:** On the current Apple Silicon host, opened ZPL and EPL alongside two separate designs. Reopening the same ZPL selected its existing tab. Design text editing retained focus, Ctrl+Tab switched documents, and per-document output folders and formats remained independent. A PDF contained three 102 × 152 mm pages, verified independently with a PDF parser. PNG export reached Saved and produced three 816 × 1216 px images with 203.2 dpi metadata. The queue's default output directory remained unchanged.
+- **Save conflicts:** Modified an EPL draft, then changed its source externally. Save displayed Cancel / Save As / Overwrite. Cancel retained the draft; Save As wrote the edited content to a new path, cleared the unsaved indicator, and preserved the externally changed original. Overwrite and missing-file relocation were not exercised in this desktop pass.
+- **Recovery and cancellation:** Normal restart restored tab order, active selection, independent draft content, unsaved indicators, and export settings. A controlled forced termination also recovered autosaved drafts. Closing a dirty design displayed Save / Discard / Cancel; Cancel retained it, and cancelling the subsequent native Save dialog retained the tab and allowed normal quit.
+- **Layout and focus:** Inspected the blue/white shell at 1440 × 900, 1280 × 820, 1000 × 720, and 480 × 360 logical pixels. Short windows use numbered pages and reduced canvas padding. At 480 × 360, the user confirmed the properties button opened its drawer; Page Down reached export settings, Escape closed the drawer, and Cmd+O still opened the native dialog. Switching Source → Preview retained the Save As shortcut. English/Chinese switching (including the restored-workspace banner), bounded preview image loading, fit-to-canvas, and job-title filtering were also checked.
+- **Local build evidence:** Native macOS ARM64, macOS Intel, Windows x64 GNU cross-builds, and Debian 12 amd64 container builds passed, as did workspace Clippy. Desktop session/scheduler tests also passed in the Linux container. These are local checks, not native Windows/Linux desktop acceptance or a GitHub Actions result. The build workflow includes the desktop library tests on every target. Consult [GitHub Actions](https://github.com/GOODBOY008/labelize-printer/actions/workflows/build.yml) for CI results tied to an exact source commit.
+
+The Mac was unlocked for this follow-up pass. Coordinate mouse events from the automation tool remained intermittent in the narrow window; user confirmation and successful keyboard interactions are recorded separately above. Chinese IME composition, real system display scaling, missing-file relocation, and Windows/Linux desktop behavior still require native checks. Historical printing evidence below applies to the unchanged backend, not automatically to the new desktop interface.
 
 ## Earlier desktop regression checks
 

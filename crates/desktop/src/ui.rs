@@ -8,7 +8,7 @@ use gpui_component::{
     button::{Button, ButtonVariants},
     input::{Input, InputState},
     scroll::ScrollableElement,
-    Disableable, Selectable, Sizable, TitleBar,
+    Disableable, Icon, IconName, Selectable, Sizable, TitleBar,
 };
 use labelize_printer_core::{
     document::DocumentKind, AppPaths, JobState, OutputFormat, PrintJobInput, Settings, Snapshot,
@@ -25,6 +25,12 @@ actions!(
         OpenLabel,
         NewLabel,
         SaveLabel,
+        SaveLabelAs,
+        ExportLabel,
+        CloseLabel,
+        NextLabel,
+        PreviousLabel,
+        ShowRecent,
         ShowSetup,
         ShowSettings,
         ShowJobs,
@@ -42,6 +48,7 @@ pub(crate) const SURFACE: u32 = 0xf5f7fb;
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Page {
     Studio,
+    Recent,
     Setup,
     Settings,
     Jobs,
@@ -51,6 +58,10 @@ impl Page {
     fn title(self, language: Language) -> &'static str {
         match self {
             Self::Studio => language.text(Text::Studio),
+            Self::Recent => match language {
+                Language::Chinese => "最近文件",
+                Language::English => "Recent files",
+            },
             Self::Setup => language.text(Text::Setup),
             Self::Settings => language.text(Text::Settings),
             Self::Jobs => language.text(Text::Jobs),
@@ -60,6 +71,10 @@ impl Page {
     fn description(self, language: Language) -> &'static str {
         match self {
             Self::Studio => language.text(Text::StudioDescription),
+            Self::Recent => match language {
+                Language::Chinese => "继续处理最近打开的标签文件。",
+                Language::English => "Continue working on a recently opened label file.",
+            },
             Self::Setup => language.text(Text::SetupDescription),
             Self::Settings => language.text(Text::SettingsDescription),
             Self::Jobs => language.text(Text::JobsDescription),
@@ -68,7 +83,7 @@ impl Page {
 }
 
 pub struct PrinterApp {
-    studio: Entity<crate::studio::Studio>,
+    studio: Entity<crate::workbench::Workbench>,
     page: Page,
     focus: FocusHandle,
     scroll: ScrollHandle,
@@ -88,6 +103,9 @@ pub struct PrinterApp {
     notice: Option<Result<String, String>>,
     activity: Option<Activity>,
     modal: bool,
+    jobs_filter: u8,
+    jobs_search: Entity<InputState>,
+    expanded_job: Option<String>,
 }
 
 impl PrinterApp {
@@ -98,6 +116,8 @@ impl PrinterApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let jobs_search = cx.new(|cx| InputState::new(window, cx).placeholder("Filter / 筛选"));
+        cx.observe(&jobs_search, |_, _, cx| cx.notify()).detach();
         let preferences_path = paths.root.join("desktop.json");
         let draft = Settings::default();
         let output_dir = cx.new(|cx| {
@@ -123,9 +143,14 @@ impl PrinterApp {
             .detach();
             state
         };
-        let studio = cx
-            .new(|cx| crate::studio::Studio::new(paths.clone(), preferences.language, window, cx));
-        cx.observe(&studio, |_, _, cx| cx.notify()).detach();
+        let studio = cx.new(|cx| {
+            crate::workbench::Workbench::new(paths.clone(), preferences.language, window, cx)
+        });
+        cx.observe_in(&studio, window, |_, _, w, cx| {
+            w.refresh();
+            cx.notify();
+        })
+        .detach();
         let (commands, events) = worker::spawn(paths);
         cx.spawn_in(window, async move |this, cx| {
             while let Ok(event) = events.recv().await {
@@ -161,17 +186,32 @@ impl PrinterApp {
             notice: None,
             activity: None,
             modal: false,
+            jobs_filter: 0,
+            jobs_search,
+            expanded_job: None,
         }
     }
 
     pub fn request_close(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        self.studio
-            .update(cx, |studio, cx| studio.request_close(window, cx))
+        let close = self
+            .studio
+            .update(cx, |studio, cx| studio.request_close(window, cx));
+        if !close {
+            self.change_page(Page::Studio, window, cx);
+        }
+        close
     }
     pub fn open_document(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         self.change_page(Page::Studio, window, cx);
         self.studio
             .update(cx, |studio, cx| studio.open_path(path, window, cx));
+    }
+
+    fn t(&self, zh: &'static str, en: &'static str) -> &'static str {
+        match self.preferences.language {
+            Language::Chinese => zh,
+            Language::English => en,
+        }
     }
 
     fn text(&self, text: Text) -> &'static str {
@@ -187,7 +227,7 @@ impl PrinterApp {
                 self.preferences = preferences;
                 crate::apply_language(self.preferences.language, cx);
                 self.studio.update(cx, |studio, cx| {
-                    studio.language = self.preferences.language;
+                    studio.set_language(self.preferences.language, cx);
                     cx.notify();
                 });
                 self.notice = None;
@@ -310,6 +350,8 @@ impl PrinterApp {
     fn change_page(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
         if self.page != page {
             self.page = page;
+            self.studio
+                .update(cx, |s, cx| s.set_visible(page == Page::Studio, window, cx));
             self.focus.focus(window);
             self.scroll.set_offset(Point::default());
             self.notice = None;
@@ -541,78 +583,176 @@ impl PrinterApp {
         }
     }
 
-    fn header(&self, compact: bool, padding: Pixels, cx: &mut Context<Self>) -> impl IntoElement {
-        let logo = div()
+    fn sidebar(&self, compact: bool, cx: &mut Context<Self>) -> impl IntoElement {
+        let mut nav = div()
+            .w(px(if compact { 56. } else { 188. }))
+            .flex_shrink_0()
+            .h_full()
             .flex()
-            .items_center()
-            .gap_3()
-            .child(img(self.logo.clone()).size(px(40.)).flex_shrink_0())
+            .flex_col()
+            .p_2()
+            .gap_2()
+            .bg(rgb(0xf8faff))
+            .border_r_1()
+            .border_color(rgb(BORDER))
             .child(
                 div()
+                    .h(px(64.))
                     .flex()
-                    .flex_col()
-                    .child(
-                        div()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child("Labelize Printer"),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(rgb(MUTED))
-                            .child(self.text(Text::Tagline)),
-                    ),
+                    .items_center()
+                    .gap_2()
+                    .px_1()
+                    .child(img(self.logo.clone()).size(px(32.)).flex_shrink_0())
+                    .when(!compact, |d| {
+                        d.child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .child("Labelize"),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(10.))
+                                        .text_color(rgb(MUTED))
+                                        .child("PRINTER & STUDIO"),
+                                ),
+                        )
+                    }),
             );
-        let mut nav = div()
-            .flex()
-            .items_center()
-            .gap_1()
-            .p_1()
-            .rounded_lg()
-            .bg(rgb(SURFACE))
-            .when(compact, |this| this.w_full());
-        for (index, page) in [Page::Studio, Page::Setup, Page::Settings, Page::Jobs]
-            .into_iter()
-            .enumerate()
-        {
+        for (index, page, icon) in [
+            (0, Page::Studio, IconName::LayoutDashboard),
+            (1, Page::Recent, IconName::FolderOpen),
+            (2, Page::Jobs, IconName::Inbox),
+        ] {
             nav = nav.child(
-                Button::new(("nav", index))
+                Button::new(("nav", index as usize))
                     .ghost()
+                    .w_full()
+                    .justify_start()
+                    .icon(icon)
                     .selected(self.page == page)
-                    .text_sm()
-                    .font_weight(FontWeight::MEDIUM)
-                    .when(compact, |this| this.flex_1())
-                    .label(page.title(self.preferences.language))
-                    .on_click(
-                        cx.listener(move |app, _, window, cx| app.change_page(page, window, cx)),
-                    ),
+                    .tooltip(page.title(self.preferences.language))
+                    .when(!compact, |b| b.label(page.title(self.preferences.language)))
+                    .on_click(cx.listener(move |app, _, w, cx| app.change_page(page, w, cx))),
             );
         }
-        div()
-            .flex()
-            .justify_center()
-            .flex_shrink_0()
-            .border_b_1()
-            .border_color(rgb(BORDER))
-            .bg(rgb(0xffffff))
+        nav = nav.child(div().flex_1());
+        let ready = self.queue_installed() && self.connected();
+        nav = nav
             .child(
                 div()
                     .flex()
-                    .w_full()
-                    .max_w(px(if self.page == Page::Studio {
-                        1240.
+                    .items_center()
+                    .gap_2()
+                    .p_2()
+                    .rounded_md()
+                    .when(!compact, |d| d.bg(rgb(0xedf3fc)))
+                    .child(div().size(px(7.)).rounded_full().bg(rgb(if ready {
+                        0x25a675
                     } else {
-                        900.
-                    }))
-                    .min_w_0()
-                    .px(padding)
-                    .py_3()
-                    .gap_3()
-                    .when(compact, |this| this.flex_col())
-                    .when(!compact, |this| this.items_center().justify_between())
-                    .child(logo)
-                    .child(nav),
+                        0xa1aaba
+                    })))
+                    .when(!compact, |d| {
+                        d.child(
+                            div()
+                                .flex_1()
+                                .text_xs()
+                                .text_color(rgb(MUTED))
+                                .child(if ready {
+                                    self.t("打印机已就绪", "Printer ready")
+                                } else {
+                                    self.t("打印机未就绪", "Printer not ready")
+                                }),
+                        )
+                    }),
             )
+            .child(
+                Button::new("switch-language")
+                    .ghost()
+                    .w_full()
+                    .justify_start()
+                    .icon(IconName::Globe)
+                    .tooltip(self.preferences.language.other().name())
+                    .when(!compact, |b| {
+                        b.label(self.preferences.language.other().name())
+                    })
+                    .disabled(self.modal)
+                    .on_click(cx.listener(|s, _, w, cx| s.switch_language(w, cx))),
+            )
+            .child(
+                Button::new("nav-settings")
+                    .ghost()
+                    .w_full()
+                    .justify_start()
+                    .icon(IconName::Settings2)
+                    .tooltip(self.t("设置", "Settings"))
+                    .selected(matches!(self.page, Page::Setup | Page::Settings))
+                    .when(!compact, |b| b.label(self.t("设置", "Settings")))
+                    .on_click(cx.listener(|app, _, w, cx| app.change_page(Page::Settings, w, cx))),
+            );
+        nav
+    }
+
+    fn recent_files(&self, cx: &mut Context<Self>) -> AnyElement {
+        let files = self.studio.read(cx).recent.clone();
+        let mut list = div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .rounded_lg()
+            .bg(rgb(0xffffff))
+            .border_1()
+            .border_color(rgb(BORDER));
+        if files.is_empty() {
+            list = list.child(div().p_6().text_color(rgb(MUTED)).child(self.t(
+                "打开文件后会在这里显示。",
+                "Files you open will appear here.",
+            )));
+        }
+        for (i, path) in files.into_iter().enumerate() {
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+            list = list.child(
+                div()
+                    .id(("recent", i))
+                    .p_4()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .cursor_pointer()
+                    .hover(|d| d.bg(rgb(0xeef3ff)))
+                    .child(Icon::new(IconName::File).text_color(rgb(ACCENT)))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .truncate()
+                                    .child(name),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(MUTED))
+                                    .truncate()
+                                    .child(path.to_string_lossy().into_owned()),
+                            ),
+                    )
+                    .child(Icon::new(IconName::ChevronRight).text_color(rgb(MUTED)))
+                    .on_click(cx.listener(move |s, _, w, cx| s.open_document(path.clone(), w, cx))),
+            );
+        }
+        list.into_any_element()
     }
 
     fn refresh_button(&self, cx: &mut Context<Self>) -> Button {
@@ -870,6 +1010,40 @@ impl PrinterApp {
                     .on_click(cx.listener(|app, _, _, cx| app.send(Work::Test(None), cx))),
             ),
         );
+        list = list.child(
+            div()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap_2()
+                .child(div().w(px(220.)).child(Input::new(&self.jobs_search)))
+                .children(
+                    [
+                        (0, self.t("全部", "All")),
+                        (1, self.t("进行中", "In progress")),
+                        (2, self.t("已保存", "Saved")),
+                        (3, self.t("失败", "Failed")),
+                    ]
+                    .into_iter()
+                    .map(|(filter, label)| {
+                        Button::new(("jobs-filter", filter as usize))
+                            .small()
+                            .ghost()
+                            .label(label)
+                            .selected(self.jobs_filter == filter)
+                            .on_click(cx.listener(move |s, _, _, cx| {
+                                s.jobs_filter = filter;
+                                cx.notify();
+                            }))
+                    }),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(rgb(MUTED))
+                        .child(self.t("筛选最近 100 条任务", "Filters the latest 100 jobs")),
+                ),
+        );
         if jobs.is_empty() {
             list = list.child(
                 card(compact)
@@ -885,7 +1059,22 @@ impl PrinterApp {
                     ),
             );
         }
+        let query = self.jobs_search.read(cx).value().to_lowercase();
+        let mut shown = 0;
         for job in jobs {
+            if !job.title.to_lowercase().contains(&query) && !job.id.to_lowercase().contains(&query)
+            {
+                continue;
+            }
+            if match self.jobs_filter {
+                1 => matches!(job.state, JobState::Saved | JobState::Failed),
+                2 => job.state != JobState::Saved,
+                3 => job.state != JobState::Failed,
+                _ => false,
+            } {
+                continue;
+            }
+            shown += 1;
             let (label, color) = match job.state {
                 JobState::Receiving => (self.text(Text::Receiving), MUTED),
                 JobState::Queued => (self.text(Text::Queued), MUTED),
@@ -921,7 +1110,8 @@ impl PrinterApp {
                     self.preferences.language.page_count(job.page_count)
                 )
             };
-            let mut row = card(compact)
+            let mut row = card(true)
+                .p_3()
                 .id(SharedString::from(job.id.clone()))
                 .gap_2()
                 .child(
@@ -941,10 +1131,40 @@ impl PrinterApp {
                         .child(badge(label, color)),
                 )
                 .child(div().text_sm().text_color(rgb(MUTED)).child(detail));
+            if self.expanded_job.as_deref() == Some(&job.id) {
+                row = row.child(
+                    div()
+                        .text_xs()
+                        .text_color(rgb(MUTED))
+                        .child(format!("ID: {}", job.id)),
+                );
+                for file in &job.output_files {
+                    row = row.child(
+                        div()
+                            .text_xs()
+                            .text_color(rgb(MUTED))
+                            .child(file.to_string_lossy().into_owned()),
+                    );
+                }
+            }
             if let Some(error) = &job.error {
                 row = row.child(div().text_sm().text_color(rgb(color)).child(error.clone()));
             }
-            let mut controls = button_row();
+            let details_id = job.id.clone();
+            let mut controls = button_row().child(
+                Button::new("job-details")
+                    .small()
+                    .ghost()
+                    .label(self.t("详情", "Details"))
+                    .on_click(cx.listener(move |s, _, _, cx| {
+                        s.expanded_job = if s.expanded_job.as_ref() == Some(&details_id) {
+                            None
+                        } else {
+                            Some(details_id.clone())
+                        };
+                        cx.notify();
+                    })),
+            );
             if let Some(file) = job.output_files.first() {
                 let file = file.clone();
                 if let Some(folder) = file.parent().map(Path::to_path_buf) {
@@ -976,6 +1196,14 @@ impl PrinterApp {
                 );
             }
             list = list.child(row.child(controls));
+        }
+        if shown == 0 && !jobs.is_empty() {
+            list = list.child(
+                div()
+                    .p_6()
+                    .text_color(rgb(MUTED))
+                    .child(self.t("没有匹配的任务", "No matching jobs")),
+            );
         }
         list
     }
@@ -1038,7 +1266,7 @@ impl PrinterApp {
                             ),
                     );
             }
-            Page::Studio | Page::Jobs => {}
+            Page::Studio | Page::Recent | Page::Jobs => {}
         }
         div()
             .flex()
@@ -1120,89 +1348,157 @@ fn banner(text: String, error: bool) -> Div {
 
 impl Render for PrinterApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let compact = window.viewport_size().width < px(850.);
-        let padding = if compact { px(16.) } else { px(24.) };
-        let content = match self.page {
-            Page::Studio => self.studio.clone().into_any_element(),
-            Page::Setup => self.setup(compact, cx).into_any_element(),
-            Page::Settings => self.settings(compact, cx).into_any_element(),
-            Page::Jobs => self.jobs(compact, cx).into_any_element(),
-        };
-        let mut body = div()
-            .w_full()
-            .max_w(px(if self.page == Page::Studio {
-                1240.
-            } else {
-                900.
-            }))
-            .min_w_0()
-            .p(padding)
-            .flex()
-            .flex_col()
-            .gap_4()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(
-                        div()
-                            .text_2xl()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(self.page.title(self.preferences.language)),
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(rgb(MUTED))
-                            .child(self.page.description(self.preferences.language)),
-                    ),
-            );
-        if let Some(notice) = &self.notice {
-            body = body.child(match notice {
-                Ok(text) => banner(text.clone(), false),
-                Err(text) => banner(text.clone(), true),
-            });
-        }
-        if self.connection_error.is_some() {
-            body = body.child(banner(self.text(Text::ReconnectDescription).into(), true));
-            if self.page != Page::Setup {
-                body = body.child(button_row().child(self.refresh_button(cx)));
+        let compact = window.viewport_size().width < px(1000.);
+        let narrow = window.viewport_size().width < px(700.);
+        let mut content = div().flex_1().min_w_0().min_h_0().flex().flex_col();
+        if self.page == Page::Studio {
+            if !self.queue_installed() && !self.studio.read(cx).setup_dismissed {
+                content = content.child(
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .items_center()
+                        .gap_2()
+                        .px_3()
+                        .py_2()
+                        .bg(rgb(0xeef3ff))
+                        .text_xs()
+                        .child(div().flex_1().min_w(px(130.)).child(self.t(
+                            "也可以从系统打印窗口接收标签任务。",
+                            "Receive label jobs from your system print dialog.",
+                        )))
+                        .child(
+                            Button::new("setup-printer-hint")
+                                .small()
+                                .ghost()
+                                .label(self.t("配置打印机", "Set up printer"))
+                                .on_click(
+                                    cx.listener(|s, _, w, cx| s.change_page(Page::Setup, w, cx)),
+                                ),
+                        )
+                        .child(
+                            Button::new("skip-setup-hint")
+                                .small()
+                                .ghost()
+                                .label(self.t("稍后", "Later"))
+                                .on_click(cx.listener(|s, _, _, cx| {
+                                    s.studio.update(cx, |s, cx| s.dismiss_setup(cx));
+                                })),
+                        ),
+                );
             }
-        }
-        if self.page == Page::Setup {
-            if let Some(snapshot) = &self.snapshot {
-                for note in snapshot
-                    .platform
-                    .notes
-                    .iter()
-                    .filter(|note| !note.starts_with("Install the official ZDesigner"))
-                {
-                    body = body.child(banner(note.clone(), true));
+            content = content.child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .min_w_0()
+                    .child(self.studio.clone()),
+            );
+        } else {
+            let page_content = match self.page {
+                Page::Recent => self.recent_files(cx),
+                Page::Setup => self.setup(narrow, cx).into_any_element(),
+                Page::Settings => self.settings(narrow, cx).into_any_element(),
+                Page::Jobs => self.jobs(narrow, cx).into_any_element(),
+                Page::Studio => unreachable!(),
+            };
+            let mut body = div()
+                .w_full()
+                .max_w(px(1100.))
+                .min_w_0()
+                .p(if narrow { px(16.) } else { px(28.) })
+                .flex()
+                .flex_col()
+                .gap_4()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .child(
+                            div()
+                                .text_2xl()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child(self.page.title(self.preferences.language)),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(rgb(MUTED))
+                                .child(self.page.description(self.preferences.language)),
+                        ),
+                );
+            if matches!(self.page, Page::Setup | Page::Settings) {
+                body = body.child(
+                    button_row()
+                        .child(
+                            Button::new("settings-output-tab")
+                                .ghost()
+                                .selected(self.page == Page::Settings)
+                                .label(self.t("输出默认值", "Output defaults"))
+                                .on_click(
+                                    cx.listener(|s, _, w, cx| s.change_page(Page::Settings, w, cx)),
+                                ),
+                        )
+                        .child(
+                            Button::new("settings-printer-tab")
+                                .ghost()
+                                .selected(self.page == Page::Setup)
+                                .label(self.t("系统打印机", "System printer"))
+                                .on_click(
+                                    cx.listener(|s, _, w, cx| s.change_page(Page::Setup, w, cx)),
+                                ),
+                        ),
+                );
+            }
+            if let Some(notice) = &self.notice {
+                body = body.child(match notice {
+                    Ok(s) => banner(s.clone(), false),
+                    Err(s) => banner(s.clone(), true),
+                });
+            }
+            if self.connection_error.is_some() {
+                body = body
+                    .child(banner(self.text(Text::ReconnectDescription).into(), true))
+                    .child(self.refresh_button(cx));
+            }
+            if self.page == Page::Setup {
+                if let Some(snapshot) = &self.snapshot {
+                    for note in snapshot
+                        .platform
+                        .notes
+                        .iter()
+                        .filter(|n| !n.starts_with("Install the official ZDesigner"))
+                    {
+                        body = body.child(banner(note.clone(), true));
+                    }
                 }
             }
-        }
-        let content = div()
-            .relative()
-            .flex_1()
-            .min_h_0()
-            .min_w_0()
-            .child(
+            content = content.child(
                 div()
-                    .id("page-scroll")
-                    .size_full()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.scroll)
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
                     .child(
                         div()
-                            .w_full()
-                            .flex()
-                            .justify_center()
-                            .child(body.child(content)),
-                    ),
-            )
-            .vertical_scrollbar(&self.scroll);
-
+                            .id("page-scroll")
+                            .size_full()
+                            .overflow_y_scroll()
+                            .track_scroll(&self.scroll)
+                            .child(
+                                div()
+                                    .w_full()
+                                    .flex()
+                                    .justify_center()
+                                    .child(body.child(page_content)),
+                            ),
+                    )
+                    .vertical_scrollbar(&self.scroll),
+            );
+            if matches!(self.page, Page::Setup | Page::Settings) {
+                content = content.child(self.footer(px(16.), cx));
+            }
+        }
         div()
             .size_full()
             .min_w_0()
@@ -1211,77 +1507,75 @@ impl Render for PrinterApp {
             .flex_col()
             .bg(rgb(SURFACE))
             .font(self.font.clone())
-            .text_size(px(15.))
+            .text_size(px(14.))
             .line_height(relative(1.45))
             .text_color(rgb(TEXT))
             .key_context("LabelizePrinter")
             .track_focus(&self.focus)
-            .on_action(cx.listener(|app, _: &crate::Quit, window, cx| {
-                if app.request_close(window, cx) {
+            .on_action(cx.listener(|s, _: &crate::Quit, w, cx| {
+                if s.request_close(w, cx) {
                     cx.quit();
                 }
             }))
-            .on_action(cx.listener(|app, _: &ShowStudio, window, cx| {
-                app.change_page(Page::Studio, window, cx)
+            .on_action(cx.listener(|s, _: &ShowStudio, w, cx| s.change_page(Page::Studio, w, cx)))
+            .on_action(cx.listener(|s, _: &ShowRecent, w, cx| s.change_page(Page::Recent, w, cx)))
+            .on_action(cx.listener(|s, _: &OpenLabel, w, cx| {
+                s.change_page(Page::Studio, w, cx);
+                s.studio.update(cx, |s, cx| s.open(w, cx));
             }))
-            .on_action(cx.listener(|app, _: &OpenLabel, window, cx| {
-                app.change_page(Page::Studio, window, cx);
-                app.studio.update(cx, |s, cx| s.open(window, cx));
+            .on_action(cx.listener(|s, _: &NewLabel, w, cx| {
+                s.change_page(Page::Studio, w, cx);
+                s.studio.update(cx, |s, cx| s.new_design(w, cx));
             }))
-            .on_action(cx.listener(|app, _: &NewLabel, window, cx| {
-                app.change_page(Page::Studio, window, cx);
-                app.studio.update(cx, |s, cx| s.new_design(window, cx));
+            .on_action(cx.listener(|s, _: &SaveLabel, w, cx| {
+                s.studio.update(cx, |s, cx| s.save(w, cx));
             }))
-            .on_action(cx.listener(|app, _: &SaveLabel, window, cx| {
-                app.change_page(Page::Studio, window, cx);
-                app.studio.update(cx, |s, cx| s.save(window, cx));
+            .on_action(cx.listener(|s, _: &SaveLabelAs, w, cx| {
+                s.studio.update(cx, |s, cx| s.save_as(w, cx));
             }))
-            .on_action(cx.listener(|app, _: &ShowSetup, window, cx| {
-                app.change_page(Page::Setup, window, cx)
+            .on_action(cx.listener(|s, _: &ExportLabel, w, cx| {
+                s.studio.update(cx, |s, cx| s.export(w, cx));
             }))
-            .on_action(cx.listener(|app, _: &ShowSettings, window, cx| {
-                app.change_page(Page::Settings, window, cx)
+            .on_action(cx.listener(|s, _: &CloseLabel, w, cx| {
+                s.studio.update(cx, |s, cx| s.close_tab(w, cx));
             }))
+            .on_action(cx.listener(|s, _: &NextLabel, w, cx| {
+                s.studio.update(cx, |s, cx| s.cycle_tab(false, w, cx));
+            }))
+            .on_action(cx.listener(|s, _: &PreviousLabel, w, cx| {
+                s.studio.update(cx, |s, cx| s.cycle_tab(true, w, cx));
+            }))
+            .on_action(cx.listener(|s, _: &ShowSetup, w, cx| s.change_page(Page::Setup, w, cx)))
             .on_action(
-                cx.listener(|app, _: &ShowJobs, window, cx| {
-                    app.change_page(Page::Jobs, window, cx)
-                }),
+                cx.listener(|s, _: &ShowSettings, w, cx| s.change_page(Page::Settings, w, cx)),
             )
-            .on_action(cx.listener(|app, _: &ScrollPageUp, _, cx| app.scroll_page(1., cx)))
-            .on_action(cx.listener(|app, _: &ScrollPageDown, _, cx| app.scroll_page(-1., cx)))
+            .on_action(cx.listener(|s, _: &ShowJobs, w, cx| s.change_page(Page::Jobs, w, cx)))
+            .on_action(cx.listener(|s, _: &ScrollPageUp, _, cx| s.scroll_page(1., cx)))
+            .on_action(cx.listener(|s, _: &ScrollPageDown, _, cx| s.scroll_page(-1., cx)))
             .child(
-                TitleBar::new().child(
-                    div()
-                        .flex()
-                        .w_full()
-                        .min_w_0()
-                        .items_center()
-                        .justify_between()
-                        .pr_3()
-                        .child(
+                TitleBar::new()
+                    .on_close_window(cx.listener(|s, _, w, cx| {
+                        if s.request_close(w, cx) {
+                            w.remove_window();
+                        }
+                    }))
+                    .child(
+                        div().flex().w_full().items_center().pr_3().child(
                             div()
                                 .text_xs()
                                 .text_color(rgb(MUTED))
                                 .child("Labelize Printer"),
-                        )
-                        .child(
-                            Button::new("switch-language")
-                                .ghost()
-                                .small()
-                                .occlude()
-                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                                .label(self.preferences.language.other().name())
-                                .disabled(self.modal)
-                                .on_click(cx.listener(|app, _, window, cx| {
-                                    app.switch_language(window, cx)
-                                })),
                         ),
-                ),
+                    ),
             )
-            .child(self.header(compact, padding, cx))
-            .child(content)
-            .when(matches!(self.page, Page::Setup | Page::Settings), |this| {
-                this.child(self.footer(padding, cx))
-            })
+            .child(
+                div()
+                    .flex()
+                    .flex_1()
+                    .min_h_0()
+                    .min_w_0()
+                    .child(self.sidebar(compact, cx))
+                    .child(content),
+            )
     }
 }

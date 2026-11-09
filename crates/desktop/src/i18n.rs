@@ -63,11 +63,11 @@ impl Language {
 
     pub fn text(self, text: Text) -> &'static str {
         let (chinese, english) = match text {
-            Text::Studio => ("标签工作台", "Labels"),
+            Text::Studio => ("工作台", "Workspace"),
             Text::StudioDescription => ("打开、编辑和预览标签文件，设计标签并保存 PDF / PNG。", "Open, edit and preview label files, design labels and save PDF / PNG."),
-            Text::Setup => ("安装向导", "Setup"),
-            Text::Settings => ("输出设置", "Output settings"),
-            Text::Jobs => ("最近任务", "Recent jobs"),
+            Text::Setup => ("系统打印机", "System printer"),
+            Text::Settings => ("设置", "Settings"),
+            Text::Jobs => ("任务记录", "Jobs"),
             Text::SetupDescription => ("添加系统打印机，或先用一份 ZPL 测试输出。", "Add the system printer or try a ZPL test print."),
             Text::SettingsDescription => ("选择文件格式、保存目录和缺省标签尺寸。", "Choose the file format, output folder and default label size."),
             Text::JobsDescription => ("查看任务状态，打开已保存的文件。", "Check job status and open saved files."),
@@ -90,7 +90,6 @@ impl Language {
             Text::RemoveQueue => ("移除队列", "Remove queue"),
             Text::MissingPath => ("此文件或目录尚未创建，或已被移动。", "This file or folder has not been created or has been moved."),
             Text::OpenPathError => ("无法打开文件或目录。", "Could not open the file or folder."),
-            Text::Tagline => ("本地标签打印", "Local label printing"),
             Text::Detecting => ("检测中…", "Detecting…"),
             Text::Refresh => ("刷新检测", "Refresh detection"),
             Text::Connect => ("连接后台", "Reconnect"),
@@ -187,7 +186,6 @@ pub enum Text {
     RemoveQueue,
     MissingPath,
     OpenPathError,
-    Tagline,
     Detecting,
     Refresh,
     Connect,
