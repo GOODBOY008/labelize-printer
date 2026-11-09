@@ -2,30 +2,44 @@
 
 <img src="platform/icon.svg" width="72" height="72" align="right" alt="Labelize Printer icon">
 
-**Save labels and system print jobs as PDF or PNG.**
+**Design labels. Preview printer code. Export PDF or PNG.**
 
 [![Build and package](https://github.com/GOODBOY008/labelize-printer/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/GOODBOY008/labelize-printer/actions/workflows/build.yml)
 
-[Download](https://github.com/GOODBOY008/labelize-printer/releases) · [Designer guide](DESIGNER.md) · [Development guide](DEVELOPMENT.md) · [Architecture](ARCHITECTURE.md) · [Report an issue](https://github.com/GOODBOY008/labelize-printer/issues)
+[Download](https://github.com/GOODBOY008/labelize-printer/releases) · [Get started](#get-started) · [Designer guide](DESIGNER.md) · [Build from source](DEVELOPMENT.md) · [Report an issue](https://github.com/GOODBOY008/labelize-printer/issues)
 
-Labelize Printer is a desktop label workspace and local virtual printer for Windows, macOS, and Linux, built with Rust and GPUI. Select **Labelize Printer** in your system print dialog to save a job as one multipage PDF or one PNG per page. A background service keeps processing jobs after you close the window. Label processing runs locally, without a cloud service. Optional software-update checks contact GitHub.
+Labelize Printer is a desktop label workspace for **Windows, macOS, and Linux**. Create visual designs, open ZPL, EPL, TSPL/TSC, CPCL, and DPL files, preview labels side by side, and save the results as PDF or PNG. A multi-tab workspace keeps each document's edits, preview, and export settings together, with local drafts and session recovery.
 
-It uses the [Labelize rendering engine](https://github.com/GOODBOY008/labelize) to parse and render printer-language files. The desktop app adds printer setup, output settings, job history, and a visual label designer. Labelize itself is also available as a library, CLI, HTTP service, WebAssembly package, and Android library.
+The app also provides a **local virtual printer**: select **Labelize Printer** in a system print dialog to capture a job as one multipage PDF or one PNG per page. A background service keeps processing accepted jobs after you close the window. Label processing runs locally; optional software-update checks contact GitHub.
 
-> **New in v0.3.0:** A blue-and-white, multi-tab workspace with automatic previews, local draft recovery, per-tab export options, and a reorganized designer. Open files and designs side by side, resume your workspace after a restart, and export through the existing background service. See [Acceptance](ACCEPTANCE.md) for verified environments and remaining checks.
+Built with **Rust + GPUI**, the desktop app uses the [Labelize engine](https://github.com/GOODBOY008/labelize) for printer-language parsing and rendering. Labelize is the reusable engine, available as a library, CLI, HTTP service, WebAssembly package, and Android library; this project adds the desktop workspace, visual designer, virtual printer, and job management.
+
+> **Release status:** [v0.3.0](https://github.com/GOODBOY008/labelize-printer/releases/tag/v0.3.0) includes the multi-tab workspace, automatic previews, and draft recovery. Current `main` also includes the [expanded designer](DESIGNER.md), faster cached tab previews, and [in-app updates](UPDATES.md); these additions are not yet in a published installer. See [Acceptance](ACCEPTANCE.md) for verified environments and remaining checks.
 
 ## What you can do
 
 | Workflow | Capabilities | Availability |
 | --- | --- | --- |
-| System printing | Select a local virtual printer and save PDF or PNG while the desktop window is closed. | v0.1.2 |
-| Job management | Choose an output folder, inspect results, open saved files, and retry failed jobs. | v0.1.2 |
-| Label files | Open ZPL, EPL, TSPL/TSC, CPCL, or DPL; edit supported text files and preview each page. | v0.2.0 |
 | Visual design | Add text, Code 128, QR codes, rectangles, and images; move objects and edit their dimensions. | v0.2.0 |
-| Extended designer | Ten barcode formats, lines and ellipses, text layout, rotation, image fitting, fills, and layer controls. | Current source (unreleased) |
+| Extended designer | 15 object types, including ten barcode formats; text layout, rotation, image fitting, fills, and layer controls. | Current source (unreleased) |
+| Label files | Open ZPL, EPL, TSPL/TSC, CPCL, or DPL; edit supported text files and preview each page. | v0.2.0 |
 | Multi-tab workspace | Independent edits, automatic previews, recent files, and local session/draft recovery. | v0.3.0 |
-| Software updates | Stable-release checks, verified full installers, and package-manager-aware handoff. | Current source (unreleased) |
+| PDF/PNG export | Save all pages as one raster PDF or one PNG per page. | v0.2.0 |
 | Portable templates | Save editable `.labelize.json` templates with embedded images and imported fonts. | v0.2.0 |
+| Virtual printer | Select a local system printer and capture jobs as PDF or PNG while the desktop window is closed. | v0.1.2 |
+| Job management | Choose an output folder, inspect results, open saved files, and retry failed jobs. | v0.1.2 |
+| Software updates | Stable-release checks, verified full installers, and package-manager-aware handoff. | Current source (unreleased) |
+
+## Get started
+
+After installing a release or [building from source](DEVELOPMENT.md#build-and-run), open **Workspace** and choose a starting point:
+
+- **Create a label:** choose **New design**, add objects, set the label dimensions, and edit properties in the inspector. The current source includes a [showcase template](examples/designer-showcase.labelize.json) that demonstrates the expanded designer.
+- **Work with printer code:** choose **Open file** to load a label file, switch between **Preview** and **Source**, and inspect its pages.
+- **Export the result:** choose PDF or PNG and an output folder in the inspector, then select **Export PDF/PNG**. Check **Jobs** for the saved result.
+- **Capture another app's print job:** follow [First system print](#first-system-print) to set up the virtual printer.
+
+File editing, label design, and export are available without installing a system print queue. Printer setup is only needed for the system-printing workflow.
 
 ## Install
 
@@ -56,7 +70,7 @@ Direct installations download the matching full installer and verify its size an
 
 Before installation, the app retains your workspace drafts, waits for file operations, and requires the print queue to be idle. **Quit and install** pauses printing and hands off to the system installer. Finish or cancel installation, then reopen the app to verify the installed components and restore your workspace. Trial packages remain unsigned. See [Software updates](UPDATES.md) for recovery and release requirements.
 
-### First print
+### First system print
 
 1. Open **Labelize Printer** and choose an output folder and format in **Settings → Output defaults**.
 2. In **Settings → System printer**, configure the resolution and add the printer. Use the test-output action to confirm that files can be saved.
@@ -113,10 +127,10 @@ The interface uses a compact sidebar below 1000 logical pixels and an inspector 
 
 | Input | Processing | Output |
 | --- | --- | --- |
+| Label file | Labelize language parser → renderer | Preview, PDF, or PNG |
+| Design template | Compose styled objects → language-neutral graphic → Labelize renderer | Preview, PDF, or PNG |
 | Windows system print job | ZDesigner generates ZPL → local RAW receiver → Labelize | PDF or PNG |
 | macOS/Linux system print job | System generates PWG/Apple Raster → PAPPL → raster adapter | PDF or PNG |
-| Label file | Labelize language parser → renderer | Preview, PDF, or PNG |
-| Design template | Design objects → language-neutral representation → Labelize renderer | Preview, PDF, or PNG |
 
 The background service snapshots each job's settings, persists the input and status in private local storage, and commits output files before reporting success. System raster pages retain their dimensions and order without being converted to ZPL. LPrint is not a dependency.
 
