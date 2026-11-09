@@ -8,9 +8,9 @@ binary_dir="${CARGO_TARGET_DIR:-target}/$profile"
 stage="dist/deb-$profile"
 mkdir -p "$stage/DEBIAN" "$stage/opt/labelize-printer/platform" "$stage/usr/share/applications" \
   "$stage/usr/share/icons/hicolor/scalable/apps" "$stage/usr/share/doc/labelize-printer"
-cp --reflink=never --sparse=never "$binary_dir/labelize-printer" "$binary_dir/labelize-printer-daemon" "$binary_dir/labelize-printer-ipp" "$stage/opt/labelize-printer/"
+cp --reflink=never --sparse=never "$binary_dir/labelize-printer" "$binary_dir/labelize-printer-daemon" "$binary_dir/labelize-printer-ipp" "$binary_dir/labelize-printer-updater" "$stage/opt/labelize-printer/"
 strip --strip-unneeded "$stage/opt/labelize-printer/labelize-printer" \
-  "$stage/opt/labelize-printer/labelize-printer-daemon" "$stage/opt/labelize-printer/labelize-printer-ipp"
+  "$stage/opt/labelize-printer/labelize-printer-daemon" "$stage/opt/labelize-printer/labelize-printer-ipp" "$stage/opt/labelize-printer/labelize-printer-updater"
 cp -R platform/linux "$stage/opt/labelize-printer/platform/"
 cp platform/linux/labelize-printer.desktop "$stage/usr/share/applications/"
 cp platform/icon.svg "$stage/usr/share/icons/hicolor/scalable/apps/labelize-printer.svg"

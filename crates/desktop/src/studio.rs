@@ -11,6 +11,7 @@ use gpui_component::{
     Disableable, IconName, Selectable, Sizable,
 };
 use labelize_printer::{
+    preview_images::{self, PreviewCache, PreviewImages, PreviewKey},
     preview_queue::{PreviewQueue, PreviewState},
     session::{self, Draft},
 };
@@ -24,7 +25,7 @@ use std::{
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::{Duration, Instant},
 };
@@ -59,8 +60,9 @@ pub struct Studio {
     preview_error: Option<String>,
     preview: Option<Preview>,
     page: usize,
-    image: Option<Arc<RenderImage>>,
-    thumbnails: Vec<(usize, Arc<RenderImage>)>,
+    display: Option<Arc<PreviewImages>>,
+    images: Arc<Mutex<PreviewCache>>,
+    image_loading: bool,
     image_request: u64,
     image_cancel: Arc<AtomicBool>,
     outputs: Vec<PathBuf>,
@@ -78,6 +80,7 @@ pub struct Studio {
     inspector_scroll: ScrollHandle,
     layers_scroll: ScrollHandle,
     canvas_size: Size<Pixels>,
+    window_handle: AnyWindowHandle,
     focus: FocusHandle,
 }
 
@@ -87,10 +90,15 @@ impl Studio {
         language: Language,
         draft: Draft,
         queue: Arc<PreviewQueue<Preview>>,
+        images: Arc<Mutex<PreviewCache>>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        cx.on_release(|this, cx| this.release_images(cx)).detach();
+        cx.on_release(|this, cx| {
+            this.forget_preview();
+            this.release_images(cx);
+        })
+        .detach();
         let fields: Vec<_> = (0..9)
             .map(|_| cx.new(|cx| InputState::new(window, cx)))
             .collect();
@@ -139,8 +147,9 @@ impl Studio {
             preview_error: None,
             preview: None,
             page: draft.page,
-            image: None,
-            thumbnails: Vec::new(),
+            display: None,
+            images,
+            image_loading: false,
             image_request: 0,
             image_cancel: Arc::new(AtomicBool::new(false)),
             outputs: Vec::new(),
@@ -158,6 +167,7 @@ impl Studio {
             inspector_scroll: ScrollHandle::default(),
             layers_scroll: ScrollHandle::default(),
             canvas_size: Size::default(),
+            window_handle: window.window_handle(),
             focus: cx.focus_handle(),
         };
         this.sync_form(window, cx);
@@ -225,12 +235,19 @@ impl Studio {
         d
     }
     pub fn set_active(&mut self, active: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.active == active {
+            // Update cancellation can re-arm the visible stale document.
+            if active && self.stale && self.due.is_none() {
+                self.due = Some(Instant::now());
+            }
+            return;
+        }
         if !active && self.drag.take().is_some() {
             self.sync_form(window, cx);
         }
         self.active = active;
         if active {
-            if self.image.is_none() {
+            if self.display.is_none() {
                 self.show_page(cx);
             }
             if self.stale {
@@ -240,6 +257,7 @@ impl Studio {
             self.queue.cancel(&self.id);
             self.rendering.cancel();
             self.image_request += 1;
+            self.image_loading = false;
             self.release_images(cx);
         }
         cx.notify();
@@ -415,6 +433,7 @@ impl Studio {
                 match result {
                     Ok(Ok(preview)) => {
                         this.page = this.page.min(preview.pages.len().saturating_sub(1));
+                        this.forget_preview();
                         this.preview = Some(preview);
                         this.stale = false;
                         this.preview_error = None;
@@ -433,45 +452,76 @@ impl Studio {
     }
     fn release_images(&mut self, cx: &mut App) {
         self.image_cancel.store(true, Ordering::Release);
-        let images: Vec<_> = self
-            .image
-            .take()
-            .into_iter()
-            .chain(self.thumbnails.drain(..).map(|(_, image)| image))
-            .collect();
-        // Defer until the current window is back in App's window map so its atlas
-        // is evicted too. Encoded Image assets would otherwise live in GPUI's cache.
+        let Some(display) = self.display.take() else {
+            return;
+        };
+        // A window may present its previous scene again before drawing a new
+        // one. Evicting immediately leaves those sprites pointing at freed GPU
+        // textures (MetalAtlas::texture panic). Evict at the next frame boundary
+        // and force that same frame to rebuild, including any reactivated image.
+        let window = self.window_handle;
         cx.defer(move |cx| {
-            for image in images {
-                cx.drop_image(image, None);
-            }
+            let _ = window.update(cx, |_, window, _| {
+                window.on_next_frame(move |window, _| {
+                    for image in display.images() {
+                        let _ = window.drop_image(image.clone());
+                    }
+                    window.refresh();
+                });
+            });
         });
+    }
+    fn forget_preview(&self) {
+        if let Some(preview) = &self.preview {
+            self.images
+                .lock()
+                .unwrap()
+                .remove_directory(preview.directory.path());
+        }
     }
     fn show_page(&mut self, cx: &mut Context<Self>) {
         self.image_request += 1;
         let ticket = self.image_request;
-        self.release_images(cx);
+        self.image_cancel.store(true, Ordering::Release);
+        self.image_loading = false;
         let Some(preview) = &self.preview else {
             return;
         };
-        let directory = preview.directory.path().to_path_buf();
-        let pages = preview.pages.iter().map(|p| p.file.clone()).collect();
+        let key = PreviewKey {
+            directory: preview.directory.path().into(),
+            page: self.page,
+        };
+        let cached = self.images.lock().unwrap().get(&key);
+        if let Some(images) = cached {
+            // No task, disk IO, PNG decode or placeholder frame on a warm tab switch.
+            self.release_images(cx);
+            self.display = Some(images);
+            log::debug!("preview cache hit: {} page {}", self.id, self.page + 1);
+            cx.notify();
+            return;
+        }
+        let directory = key.directory.clone();
+        let pages = preview.pages.clone();
         self.image_cancel = Arc::new(AtomicBool::new(false));
         let cancel = self.image_cancel.clone();
+        self.image_loading = true;
         let page = self.page;
-        let work = cx.background_executor().spawn(async move {
-            studio_worker::load_preview_images(directory, pages, page, cancel)
-        });
+        let work = cx
+            .background_executor()
+            .spawn(async move { preview_images::load(directory, pages, page, cancel) });
         cx.spawn(async move |this, cx| {
             let result = work.await;
             let _ = this.update(cx, |s, cx| {
                 if !s.active || s.image_request != ticket {
                     return;
                 }
+                s.image_loading = false;
                 match result {
-                    Ok((image, thumbnails)) => {
-                        s.image = Some(image);
-                        s.thumbnails = thumbnails;
+                    Ok(images) => {
+                        s.images.lock().unwrap().insert(key, images.clone());
+                        // Keep the last successful frame until the replacement is ready.
+                        s.release_images(cx);
+                        s.display = Some(images);
                     }
                     Err(e) => {
                         s.stale = true;
@@ -1196,10 +1246,9 @@ impl Studio {
             .size_full()
             .overflow_scroll()
             .track_scroll(&self.canvas_scroll);
-        if let (Some(image), Some(page)) = (
-            &self.image,
-            self.preview.as_ref().and_then(|p| p.pages.get(self.page)),
-        ) {
+        if let Some(display) = &self.display {
+            let image = &display.image;
+            let page = &display.page;
             let padding = if height < 220. { 16. } else { 48. };
             let fit = ((width - padding).max(1.) / page.width_mm as f32)
                 .min((height - padding).max(1.) / page.height_mm as f32);
@@ -1326,11 +1375,13 @@ impl Studio {
                     .gap_3()
                     .text_color(rgb(MUTED))
                     .child(gpui_component::Icon::new(IconName::File).size(px(32.)))
-                    .child(div().text_sm().child(if self.rendering.is_running() {
-                        self.t("正在生成预览…", "Rendering preview…")
-                    } else {
-                        self.t("预览将在这里显示", "Your preview appears here")
-                    })),
+                    .child(div().text_sm().child(
+                        if self.rendering.is_running() || self.image_loading {
+                            self.t("正在生成预览…", "Rendering preview…")
+                        } else {
+                            self.t("预览将在这里显示", "Your preview appears here")
+                        },
+                    )),
             );
         }
         area.into_any_element()
@@ -1524,29 +1575,6 @@ impl Render for Studio {
             .min_w_0()
             .min_h_0()
             .child(toolbar);
-        if self.stale {
-            center = center.child(
-                div()
-                    .px_3()
-                    .py_1()
-                    .text_xs()
-                    .text_color(rgb(if self.preview_error.is_some() {
-                        0xa22a34
-                    } else {
-                        MUTED
-                    }))
-                    .bg(rgb(if self.preview_error.is_some() {
-                        0xfff0f0
-                    } else {
-                        0xeef3ff
-                    }))
-                    .child(if let Some(e) = &self.preview_error {
-                        format!("{} · {e}", self.t("预览未更新", "Preview not updated"))
-                    } else {
-                        self.t("正在更新预览…", "Updating preview…").into()
-                    }),
-            );
-        }
         let weak = cx.weak_entity();
         center = center.child(
             div()
@@ -1571,7 +1599,38 @@ impl Render for Studio {
                     )
                     .absolute()
                     .inset_0(),
-                ),
+                )
+                .when(self.stale || self.image_loading, |area| {
+                    area.child(
+                        div()
+                            .id("preview-status")
+                            .absolute()
+                            .top_2()
+                            .left_2()
+                            .right_2()
+                            .max_h(px(80.))
+                            .overflow_y_scroll()
+                            .rounded_md()
+                            .px_3()
+                            .py_1()
+                            .text_xs()
+                            .text_color(rgb(if self.preview_error.is_some() {
+                                0xa22a34
+                            } else {
+                                MUTED
+                            }))
+                            .bg(rgb(if self.preview_error.is_some() {
+                                0xfff0f0
+                            } else {
+                                0xeef3ff
+                            }))
+                            .child(if let Some(e) = &self.preview_error {
+                                format!("{} · {e}", self.t("预览未更新", "Preview not updated"))
+                            } else {
+                                self.t("正在更新预览…", "Updating preview…").into()
+                            }),
+                    )
+                }),
         );
         if page_count > 0 && !self.source_mode {
             let mut pages = div()
@@ -1597,7 +1656,12 @@ impl Render for Studio {
                             s.show_page(cx);
                         })),
                 );
-            for (i, image) in &self.thumbnails {
+            for (i, image) in self
+                .display
+                .iter()
+                .flat_map(|d| &d.thumbnails)
+                .filter(|(i, _)| *i < page_count)
+            {
                 let i = *i;
                 if short {
                     pages = pages.child(

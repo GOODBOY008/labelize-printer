@@ -11,10 +11,24 @@ pub enum Language {
     English,
 }
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Preferences {
     pub language: Language,
+    pub automatic_updates: bool,
+    pub last_update_check: Option<i64>,
+    pub update_source: Option<labelize_printer_updater::InstallSource>,
+}
+
+impl Default for Preferences {
+    fn default() -> Self {
+        Self {
+            language: Language::default(),
+            automatic_updates: true,
+            last_update_check: None,
+            update_source: None,
+        }
+    }
 }
 
 impl Preferences {
@@ -244,4 +258,26 @@ pub enum Text {
     ReconnectDescription,
     SaveLanguageError,
     Quit,
+}
+
+#[cfg(test)]
+mod preference_tests {
+    use super::*;
+    #[test]
+    fn old_language_preferences_keep_update_defaults() {
+        let p: Preferences = serde_json::from_str(r#"{"language":"en"}"#).unwrap();
+        assert!(p.automatic_updates);
+        assert!(p.last_update_check.is_none());
+        let mut p = p;
+        p.automatic_updates = false;
+        p.last_update_check = Some(123);
+        let switched = Preferences {
+            language: p.language.other(),
+            ..p.clone()
+        };
+        let roundtrip: Preferences =
+            serde_json::from_slice(&serde_json::to_vec(&switched).unwrap()).unwrap();
+        assert!(!roundtrip.automatic_updates);
+        assert_eq!(roundtrip.last_update_check, Some(123));
+    }
 }

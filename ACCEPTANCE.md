@@ -1,8 +1,27 @@
 # Acceptance record
 
-Updated 2026-11-09. [README](README.md) · [Development guide](DEVELOPMENT.md) · [Architecture](ARCHITECTURE.md)
+Updated 2026-11-10. [README](README.md) · [Development guide](DEVELOPMENT.md) · [Architecture](ARCHITECTURE.md)
 
 This record separates builds, automated protocol checks, system printing, and native desktop acceptance. Cross-compilation, a configured CI job, or a container test does not establish desktop compatibility on the corresponding target platform. Results below identify the version or development milestone to which they apply.
+
+## In-app updates (unreleased source)
+
+Implemented on `codex/in-app-updates`, based on `bff8edf` (v0.3.0). The local packages below use development profiles and retain the workspace's 0.3.0 version; they are QA artifacts, not a newly published release.
+
+| Check | Evidence and result |
+| --- | --- |
+| Core and updater tests | 13 core tests (including 2 admission tests), 10 updater tests and 11 desktop library tests passed on macOS; the same suites passed in the Debian 12 amd64 build container. |
+| Public-release download | The production HTTPS client downloaded the published macOS ARM64 v0.3.0 PKG into temporary storage, verified asset size, the checksum manifest and both SHA256 values, and reused the verified cache. No installer was executed. |
+| Update handoff | Six real-service smoke groups passed on macOS and Debian: active RAW reception, admission across all inputs/retry, cancellation, desktop exit before authorization, desktop/daemon/IPP shutdown ordering, durable restart protection, preservation of output/history, and a lost commit response. The manual route does not execute a package manager. |
+| Existing printing behavior | All 15 existing backend smoke groups passed on macOS and Debian, including mixed label media/copies, PNG/PDF output, RAW fragmentation, Apple/PWG raster, RGB normalization, truncated input, worker crash and restart. |
+| Native desktop | macOS 27.2 Apple Silicon: keyboard navigation to Software update, live manual check, latest-version result, automatic-check toggle, language switching without losing preferences, and 1000×720 / 480×360 layouts were observed. The narrow page scrolls to all controls. |
+| Installer builds | macOS ARM64 and Intel PKGs, Windows x64 NSIS EXE and Debian amd64 DEB built locally with the new helper. Both Mac app bundles passed strict ad-hoc signature verification. Windows uses a GNU cross-build locally; the configured CI job uses native MSVC. |
+| Formatting and lint | `cargo fmt --all --check`, `git diff --check`, and workspace Clippy completed. Clippy reports existing warnings in vendored GPUI/xattr, with no new workspace warnings. |
+| Remote CI | The existing four-target workflow now tests and packages the updater and runs handoff smoke tests. At the time of these local checks, the branch had not been pushed or run on GitHub Actions; prior release CI is not evidence for these changes. |
+
+Local evidence is retained under `.cache/update-*.log`, with package hashes and environment details in `.cache/update-verification.json`. A final native preview bundle is available at `.cache/update-preview/Labelize Update Preview.app`, with an isolated data directory.
+
+Native installer completion/cancellation, actual installed-version replacement and recovery, Homebrew upgrade, Linux desktop authorization/file handlers, macOS 13 and native Intel hardware, and native Windows 11 x64 remain pending. During this run, the available UTM Windows VM showed no desktop and its Guest Agent was unavailable, so no new Windows runtime result is claimed. It was returned to the stopped state. The Mac locked after the successful UI checks; the final preview bundle was refreshed on disk without claiming a second desktop run.
 
 ## Platform coverage
 
@@ -60,6 +79,16 @@ These local results cover the multi-tab workspace implemented in [`5b0189b`](htt
 The implementation also passed all five jobs in [CI run 42617748064](https://github.com/GOODBOY008/labelize-printer/actions/runs/42617748064): formatting, macOS ARM64 and Intel, Windows x64, and Debian 12 x64. The four platform jobs included the desktop state tests and applicable backend smoke checks; Debian also passed installed-package CUPS printing. Release packages are rebuilt after the version update and have their own source-pinned CI evidence.
 
 The Mac was unlocked for this follow-up pass. Coordinate mouse events from the automation tool remained intermittent in the narrow window; user confirmation and successful keyboard interactions are recorded separately above. Chinese IME composition, real system display scaling, missing-file relocation, and Windows/Linux desktop behavior still require native checks. Historical printing evidence below applies to the unchanged backend, not automatically to the new desktop interface.
+
+## Tab preview responsiveness (unreleased source)
+
+Local checks on 2026-11-10 used the current macOS 27.2 Apple Silicon host and an isolated app/data directory under `.cache/tab-preview-qa`. These results apply to this source milestone, not to the installed app or a published package.
+
+- **Cache and state tests:** All 14 desktop library tests passed on native macOS and in the Debian 12 amd64 build container. New tests cover 100 cache hits after deleting the source PNG, distinct page/revision keys, preserved dimensions and pixel channels, no display upscaling, cancellation, LRU byte limits, and cleanup of closed documents.
+- **Native Metal regression:** The ignored atlas test passed on the host GPU, exercising 100 insertion/eviction cycles plus repeated removal while a neighboring texture tile remains live. It guards the macOS atlas reference-counting failure exposed by reusing cached images.
+- **Tab switching:** At 1000 × 720 logical pixels, three tabs held a three-page ZPL label, an EPL label, and a 2400 × 3200 px ZPL label. After their first previews loaded, 60 rapid Ctrl+Tab switches preserved the same desktop process and the exact preview-manifest timestamps; no renderer outputs were regenerated. The final preview was visible without a loading placeholder. This is a functional stress check, not a frame-time benchmark.
+- **Edited content and pagination:** Editing the large label changed its preview from `LARGE C` to `UPDATED C`; switching away and back retained the new content. Navigating the three-page label to page 2 and switching tabs preserved page 2 and its preview. Keyboard interactions were used because automated mouse clicks remained intermittent on this host.
+- **Build checks:** Native macOS compilation, Windows x64 GNU target checking, Debian 12 amd64 desktop checking, workspace Clippy, and formatting checks passed. The vendored Labelize parsers, rendering, output encoding, and task processing were unchanged. No new GitHub Actions run or Windows/Linux desktop acceptance is claimed by these local checks.
 
 ## Earlier desktop regression checks
 

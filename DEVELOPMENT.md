@@ -25,7 +25,7 @@ bash scripts/build-native.sh
 target/debug/labelize-printer
 ```
 
-The native build writes `labelize-printer-ipp` beside the desktop and daemon binaries. Keep those binaries together when running or packaging the app.
+The native build writes `labelize-printer-ipp` beside the desktop, daemon, and `labelize-printer-updater` binaries. Keep those binaries together when running or packaging the app.
 
 ### Windows
 
@@ -93,12 +93,21 @@ Removing the queue or application does not delete saved output, job history, or 
 
 ```sh
 cargo fmt --all --check
+cargo test -p labelize-printer-updater --locked
 cargo test -p labelize-printer-core --locked
 cargo test -p labelize-printer --lib --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 ```
 
-The desktop library tests cover draft recovery, write failures, source conflicts, stale preview callbacks, and cancellation/priority scheduling without a GPU. These run in each package CI job. The core tests cover job persistence, output commits, raster metadata, file-language previews, and portable designs. Consult the [acceptance record](ACCEPTANCE.md) for what has actually been run on each platform.
+The desktop library tests cover draft recovery, write failures, source conflicts, stale preview callbacks, cancellation/priority scheduling, and preview-cache reuse, revision isolation, cancellation, and byte-budget eviction without a GPU. These run in each package CI job. The core tests cover job persistence, output commits, raster metadata, file-language previews, and portable designs. Consult the [acceptance record](ACCEPTANCE.md) for what has actually been run on each platform.
+
+On a Mac with an available Metal device, the vendored atlas regression exercises repeated eviction and reuse while a neighboring image stays live. It is ignored by default because headless CI runners may not expose a GPU. Runtime shader compilation avoids requiring the optional offline Metal toolchain:
+
+```sh
+CARGO_TARGET_DIR=target/gpui-metal-test cargo test --manifest-path vendor/gpui/Cargo.toml \
+  --features runtime_shaders --lib \
+  evicted_image_can_be_reused_without_freeing_its_neighbor -- --ignored
+```
 
 ### Background smoke tests
 
@@ -193,7 +202,7 @@ After changing `platform/icon.svg`, run `bash scripts/build-icons.sh` on macOS w
 Keep the provenance of bundled sources intact:
 
 - [Labelize snapshot](vendor/labelize/PROVENANCE.md): engine revision and upstream parser checks.
-- [GPUI patches](vendor/gpui/PATCH.md): X11 visual selection and Windows debug shaders.
+- [GPUI patches](vendor/gpui/PATCH.md): X11 visual selection, Windows debug shaders, and Metal image-atlas eviction.
 - [xattr patch](vendor/xattr/PATCH.md): Linux/Android compatibility.
 - [Third-party notices](THIRD_PARTY_NOTICES.md): licenses and packaged notices.
 
@@ -206,3 +215,16 @@ Before replacing an installed build, let jobs finish, close the desktop, and run
 Set `LABELIZE_PRINTER_DEBUG=1` and launch the desktop from a terminal to send startup diagnostics to stderr. For job failures, inspect **Jobs** or `job TASK_UUID`; inputs and diagnostics are retained for retry. Include the OS, architecture, source commit or installer version, and input route in an issue.
 
 The [build workflow](.github/workflows/build.yml) produces Windows x64, macOS ARM64/x86_64, and Debian 12 amd64 installers. Its build and protocol checks are separate from the [remaining native acceptance work](ACCEPTANCE.md#remaining-acceptance-work).
+
+## Update checks and installer handoff
+
+See [UPDATES.md](UPDATES.md) for the protocol and recovery contract. The updater is a separate crate and binary without GPUI. The CI package matrix includes it in all four installers and runs its tests plus the real-service handoff smoke test:
+
+```sh
+python3 scripts/update-smoke.py --profile debug
+cargo test -p labelize-printer-updater live_release_integrity -- --ignored --nocapture
+```
+
+The smoke test uses an isolated data directory and a manual handoff; it never executes Homebrew or installs a package. It checks admission across RAW/IPP/local imports/retry, cancellation, desktop-exit ordering, durable restart protection, and history/output preservation. The ignored live test contacts the official public release, downloads the host installer into a temporary directory, verifies both published hashes, and exercises cache reuse; it does not execute it.
+
+For Linux builds using a separate target directory, add `--target-dir target/linux-workbench` to `update-smoke.py`. Keep native IPP and all Rust binaries in the same profile directory. Do not treat package builds or protocol smoke tests as native installer or ZDesigner acceptance.

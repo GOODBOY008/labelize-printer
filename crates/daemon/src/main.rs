@@ -36,6 +36,18 @@ struct Cli {
 enum Action {
     Serve,
     #[command(hide = true)]
+    PrepareUpdate {
+        token: String,
+    },
+    #[command(hide = true)]
+    CancelUpdate {
+        token: String,
+    },
+    #[command(hide = true)]
+    CommitUpdate {
+        token: String,
+    },
+    #[command(hide = true)]
     Preview {
         #[arg(long)]
         request: PathBuf,
@@ -120,6 +132,9 @@ fn run() -> Result<()> {
             println!("{}", job.id);
             return Ok(());
         }
+        Action::PrepareUpdate { token } => (Request::PrepareUpdate { token }, false),
+        Action::CancelUpdate { token } => (Request::CancelUpdate { token }, false),
+        Action::CommitUpdate { token } => (Request::CommitUpdate { token }, false),
         Action::Status => (Request::Status, false),
         Action::Refresh => (Request::RefreshPlatform, false),
         Action::Submit { path, wait, title } => {
@@ -220,9 +235,15 @@ struct Service {
     platform: Mutex<PlatformStatus>,
     adapter: Mutex<Option<Child>>,
     configuration: Mutex<()>,
+    admission: Mutex<maintenance::Admission>,
+    raw_listener: Mutex<Option<TcpListener>>,
 }
 
 fn serve(paths: AppPaths) -> Result<()> {
+    // A successful exit prevents login supervisors from restarting during installation.
+    if maintenance::pending(&paths).exists() {
+        return Ok(());
+    }
     let lock = fs::OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -252,6 +273,8 @@ fn serve(paths: AppPaths) -> Result<()> {
         raw_listening: AtomicBool::new(raw_listener.is_ok()),
         adapter: Mutex::new(None),
         configuration: Mutex::new(()),
+        admission: Mutex::new(maintenance::Admission::default()),
+        raw_listener: Mutex::new(None),
     });
     if let Err(error) = start_adapter(&service, &settings) {
         service
@@ -263,8 +286,10 @@ fn serve(paths: AppPaths) -> Result<()> {
     }
     match raw_listener {
         Ok(listener) => {
+            listener.set_nonblocking(true)?;
+            *service.raw_listener.lock().unwrap() = Some(listener);
             let service = service.clone();
-            thread::spawn(move || receive_raw(listener, service));
+            thread::spawn(move || receive_raw(service));
         }
         Err(error) => service
             .platform
@@ -356,7 +381,10 @@ fn snapshot(service: &Service) -> Result<Snapshot> {
     })
 }
 
-fn handle_connection(stream: interprocess::local_socket::Stream, service: &Service) -> Result<()> {
+fn handle_connection(
+    stream: interprocess::local_socket::Stream,
+    service: &Arc<Service>,
+) -> Result<()> {
     let mut reader = BufReader::new(stream);
     let envelope: AuthenticatedRequest = ipc::read_json(&mut reader)?;
     if envelope.token != service.paths.token()? {
@@ -371,22 +399,41 @@ fn handle_connection(stream: interprocess::local_socket::Stream, service: &Servi
             thread::sleep(Duration::from_secs(1));
         }
     }
-    let shutdown = matches!(envelope.request, Request::Shutdown);
+    let shutdown = matches!(
+        envelope.request,
+        Request::Shutdown | Request::CommitUpdate { .. }
+    );
     let response = match dispatch(envelope.request, service) {
         Ok(data) => Response::success(data),
         Err(error) => Response::error(format!("{error:#}")),
     };
-    ipc::write_json(reader.get_mut(), &response)?;
+    let written = ipc::write_json(reader.get_mut(), &response);
+    // A disappearing client must not leave a committed service paused forever.
     if shutdown && response.ok {
         thread::spawn(|| {
             thread::sleep(Duration::from_millis(200));
             std::process::exit(0);
         });
     }
-    Ok(())
+    written
 }
 
-fn dispatch(request: Request, service: &Service) -> Result<serde_json::Value> {
+fn dispatch(request: Request, service: &Arc<Service>) -> Result<serde_json::Value> {
+    // Serialize admission with update preparation, including imports before DB insertion.
+    let mut admission = service.admission.lock().unwrap();
+    if !matches!(
+        &request,
+        Request::Status
+            | Request::RefreshPlatform
+            | Request::Job { .. }
+            | Request::Watch
+            | Request::PrepareUpdate { .. }
+            | Request::CancelUpdate { .. }
+            | Request::CommitUpdate { .. }
+            | Request::Shutdown
+    ) {
+        admission.require_accepting()?;
+    }
     let store = Store::open(service.paths.clone())?;
     Ok(match request {
         Request::Status => serde_json::to_value(snapshot(service)?)?,
@@ -490,12 +537,59 @@ fn dispatch(request: Request, service: &Service) -> Result<serde_json::Value> {
             *service.platform.lock().unwrap() = platform::diagnostics(&service.paths);
             serde_json::to_value(snapshot(service)?)?
         }
+        Request::PrepareUpdate { token } => {
+            // Drain a connection already in the TCP backlog before deciding idle.
+            let mut listener = service.raw_listener.lock().unwrap();
+            if let Some(socket) = listener.as_ref() {
+                if let Ok((stream, _)) = socket.accept() {
+                    admission.raw_connections += 1;
+                    let service = service.clone();
+                    thread::spawn(move || {
+                        if let Err(error) = spool_raw(stream, service.paths.clone()) {
+                            eprintln!("RAW reception: {error:#}");
+                        }
+                        service.admission.lock().unwrap().raw_connections -= 1;
+                    });
+                    bail!("A RAW connection arrived; wait for the print job before installing");
+                }
+            }
+            admission.prepare(token, store.has_active_jobs()?)?;
+            // Stop TCP acknowledgements for new jobs, not only application-level imports.
+            listener.take();
+            service.raw_listening.store(false, Ordering::SeqCst);
+            serde_json::json!({ "prepared": true })
+        }
+        Request::CancelUpdate { token } => {
+            admission.cancel(&token)?;
+            serde_json::json!({ "cancelled": true })
+        }
+        Request::CommitUpdate { token } => {
+            anyhow::ensure!(
+                maintenance::pending(&service.paths).is_file(),
+                "Missing durable update handoff"
+            );
+            admission.commit(&token)?;
+            if let Some(mut adapter) = service.adapter.lock().unwrap().take() {
+                let _ = adapter.kill();
+                adapter.wait()?;
+            }
+            serde_json::json!({ "stopping": true })
+        }
         Request::Shutdown => {
             let _configuration = service.configuration.lock().unwrap();
             anyhow::ensure!(
                 !store.has_active_jobs()?,
                 "Wait for active jobs before stopping the background service"
             );
+            anyhow::ensure!(
+                admission.raw_connections == 0,
+                "Wait for RAW connections before stopping"
+            );
+            if admission.accepting() {
+                let token = uuid_token();
+                admission.prepare(token.clone(), false)?;
+                admission.commit(&token)?;
+            }
             if let Some(mut adapter) = service.adapter.lock().unwrap().take() {
                 let _ = adapter.kill();
                 let _ = adapter.wait();
@@ -531,33 +625,53 @@ fn bind_raw(settings: &mut Settings) -> Result<TcpListener> {
     bail!("Cannot bind a local RAW print port")
 }
 
-fn receive_raw(listener: TcpListener, service: Arc<Service>) {
-    let active = Arc::new(AtomicUsize::new(0));
-    for stream in listener.incoming() {
-        let stream = match stream {
-            Ok(s) => s,
-            Err(error) => {
-                eprintln!("RAW accept: {error}");
-                continue;
-            }
-        };
-        if active.fetch_add(1, Ordering::SeqCst) >= 4 {
-            active.fetch_sub(1, Ordering::SeqCst);
+fn receive_raw(service: Arc<Service>) {
+    loop {
+        let mut admission = service.admission.lock().unwrap();
+        if !admission.accepting() || admission.raw_connections >= 4 {
+            drop(admission);
+            thread::sleep(Duration::from_millis(20));
             continue;
         }
-        let paths = service.paths.clone();
-        let active = active.clone();
-        thread::spawn(move || {
-            if let Err(error) = spool_raw(stream, paths) {
-                eprintln!("RAW job: {error:#}");
+        let mut listener = service.raw_listener.lock().unwrap();
+        if listener.is_none() {
+            if let Ok(settings) = Store::open(service.paths.clone()).and_then(|s| s.settings()) {
+                if let Ok(socket) = TcpListener::bind((Ipv4Addr::LOCALHOST, settings.raw_port)) {
+                    if socket.set_nonblocking(true).is_ok() {
+                        *listener = Some(socket);
+                        service.raw_listening.store(true, Ordering::SeqCst);
+                    }
+                }
             }
-            active.fetch_sub(1, Ordering::SeqCst);
-        });
+        }
+        if let Some(socket) = listener.as_ref() {
+            match socket.accept() {
+                Ok((stream, _)) => {
+                    admission.raw_connections += 1;
+                    let service = service.clone();
+                    thread::spawn(move || {
+                        if let Err(error) = spool_raw(stream, service.paths.clone()) {
+                            eprintln!("RAW job: {error:#}");
+                        }
+                        service.admission.lock().unwrap().raw_connections -= 1;
+                    });
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => (),
+                Err(error) => eprintln!("RAW accept: {error}"),
+            }
+        }
+        drop(listener);
+        drop(admission);
+        thread::sleep(Duration::from_millis(20));
     }
-    service.raw_listening.store(false, Ordering::SeqCst);
+}
+fn uuid_token() -> String {
+    uuid::Uuid::new_v4().to_string()
 }
 
 fn spool_raw(mut stream: TcpStream, paths: AppPaths) -> Result<()> {
+    // macOS inherits O_NONBLOCK from the listener on accepted sockets.
+    stream.set_nonblocking(false)?;
     stream.set_read_timeout(Some(Duration::from_secs(RAW_IDLE_TIMEOUT_SECONDS)))?;
     let store = Store::open(paths.clone())?;
     let mut job = store.create(

@@ -1,3 +1,5 @@
+#[path = "ui_updates.rs"]
+mod update_ui;
 use crate::branding;
 use crate::i18n::{Language, Preferences, Text};
 use crate::worker::{self, Activity, Event, Work};
@@ -51,6 +53,7 @@ enum Page {
     Recent,
     Setup,
     Settings,
+    Updates,
     Jobs,
 }
 
@@ -64,6 +67,10 @@ impl Page {
             },
             Self::Setup => language.text(Text::Setup),
             Self::Settings => language.text(Text::Settings),
+            Self::Updates => match language {
+                Language::Chinese => "软件更新",
+                Language::English => "Software update",
+            },
             Self::Jobs => language.text(Text::Jobs),
         }
     }
@@ -77,6 +84,10 @@ impl Page {
             },
             Self::Setup => language.text(Text::SetupDescription),
             Self::Settings => language.text(Text::SettingsDescription),
+            Self::Updates => match language {
+                Language::Chinese => "检查新版本，在准备好时安装。",
+                Language::English => "Check for a new version and install when you are ready.",
+            },
             Self::Jobs => language.text(Text::JobsDescription),
         }
     }
@@ -91,6 +102,8 @@ pub struct PrinterApp {
     font: Font,
     preferences: Preferences,
     preferences_path: PathBuf,
+    updates: crate::updates::Updates,
+    update_after_save: bool,
     snapshot: Option<Snapshot>,
     connection_error: Option<String>,
     output_dir: Entity<InputState>,
@@ -146,9 +159,24 @@ impl PrinterApp {
         let studio = cx.new(|cx| {
             crate::workbench::Workbench::new(paths.clone(), preferences.language, window, cx)
         });
-        cx.observe_in(&studio, window, |_, _, w, cx| {
-            w.refresh();
-            cx.notify();
+        // Root owns frame invalidation. Avoid extra immediate window refreshes
+        // at every ancestor of a document notification.
+        cx.observe(&studio, |s, _, cx| {
+            if matches!(s.page, Page::Studio | Page::Recent) {
+                cx.notify();
+            }
+        })
+        .detach();
+        let (updates, update_events) = crate::updates::Updates::new(paths.clone());
+        cx.spawn_in(window, async move |this, cx| {
+            while let Ok(event) = update_events.recv().await {
+                if this
+                    .update_in(cx, |s, w, cx| s.receive_update(event, w, cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
         })
         .detach();
         let (commands, events) = worker::spawn(paths);
@@ -174,6 +202,8 @@ impl PrinterApp {
             font,
             preferences,
             preferences_path,
+            updates,
+            update_after_save: false,
             snapshot: None,
             connection_error: None,
             output_dir,
@@ -221,6 +251,7 @@ impl PrinterApp {
     fn switch_language(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let preferences = Preferences {
             language: self.preferences.language.other(),
+            ..self.preferences.clone()
         };
         match preferences.save(&self.preferences_path) {
             Ok(()) => {
@@ -279,6 +310,12 @@ impl PrinterApp {
                     .into()
                 }));
                 self.scroll.set_offset(Point::default());
+                if activity == Activity::Save && self.update_after_save {
+                    self.update_after_save = false;
+                    if self.notice.as_ref().is_some_and(|n| n.is_ok()) {
+                        self.confirm_update(window, cx);
+                    }
+                }
             }
         }
         cx.notify();
@@ -1266,7 +1303,7 @@ impl PrinterApp {
                             ),
                     );
             }
-            Page::Studio | Page::Recent | Page::Jobs => {}
+            Page::Studio | Page::Recent | Page::Jobs | Page::Updates => {}
         }
         div()
             .flex()
@@ -1351,6 +1388,38 @@ impl Render for PrinterApp {
         let compact = window.viewport_size().width < px(1000.);
         let narrow = window.viewport_size().width < px(700.);
         let mut content = div().flex_1().min_w_0().min_h_0().flex().flex_col();
+        if self.page != Page::Updates
+            && (self.updates.offer.is_some() || self.updates.recovery.is_some())
+        {
+            content = content.child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap_2()
+                    .px_3()
+                    .py_2()
+                    .bg(rgb(0xeef3ff))
+                    .text_xs()
+                    .child(div().flex_1().child(if self.updates.recovery.is_some() {
+                        self.t(
+                            "检查安装状态后恢复打印。",
+                            "Verify the installation to resume printing.",
+                        )
+                    } else {
+                        self.t("有新版本可用。", "A new version is available.")
+                    }))
+                    .child(
+                        Button::new("view-update")
+                            .small()
+                            .ghost()
+                            .label(self.t("查看更新", "View update"))
+                            .on_click(
+                                cx.listener(|s, _, w, cx| s.change_page(Page::Updates, w, cx)),
+                            ),
+                    ),
+            );
+        }
         if self.page == Page::Studio {
             if !self.queue_installed() && !self.studio.read(cx).setup_dismissed {
                 content = content.child(
@@ -1399,6 +1468,7 @@ impl Render for PrinterApp {
                 Page::Recent => self.recent_files(cx),
                 Page::Setup => self.setup(narrow, cx).into_any_element(),
                 Page::Settings => self.settings(narrow, cx).into_any_element(),
+                Page::Updates => self.update_page(narrow, cx).into_any_element(),
                 Page::Jobs => self.jobs(narrow, cx).into_any_element(),
                 Page::Studio => unreachable!(),
             };
@@ -1428,7 +1498,7 @@ impl Render for PrinterApp {
                                 .child(self.page.description(self.preferences.language)),
                         ),
                 );
-            if matches!(self.page, Page::Setup | Page::Settings) {
+            if matches!(self.page, Page::Setup | Page::Settings | Page::Updates) {
                 body = body.child(
                     button_row()
                         .child(
@@ -1447,6 +1517,15 @@ impl Render for PrinterApp {
                                 .label(self.t("系统打印机", "System printer"))
                                 .on_click(
                                     cx.listener(|s, _, w, cx| s.change_page(Page::Setup, w, cx)),
+                                ),
+                        )
+                        .child(
+                            Button::new("settings-update-tab")
+                                .ghost()
+                                .selected(self.page == Page::Updates)
+                                .label(self.t("软件更新", "Software update"))
+                                .on_click(
+                                    cx.listener(|s, _, w, cx| s.change_page(Page::Updates, w, cx)),
                                 ),
                         ),
                 );

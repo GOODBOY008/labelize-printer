@@ -222,6 +222,15 @@ pub enum Request {
     TestPrint,
     Install,
     Uninstall,
+    PrepareUpdate {
+        token: String,
+    },
+    CancelUpdate {
+        token: String,
+    },
+    CommitUpdate {
+        token: String,
+    },
     Shutdown,
     Watch,
 }

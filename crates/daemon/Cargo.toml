@@ -13,6 +13,7 @@ chrono.workspace = true
 fs2.workspace = true
 interprocess.workspace = true
 libc.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

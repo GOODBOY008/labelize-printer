@@ -146,36 +146,3 @@ impl Drop for ChildGuard {
         let _ = self.0.wait();
     }
 }
-
-/// Decode off the UI thread and keep display textures bounded. Full-resolution
-/// PNGs remain on disk for pagination; exports use the original document.
-type PreviewImages = (Arc<gpui::RenderImage>, Vec<(usize, Arc<gpui::RenderImage>)>);
-pub fn load_preview_images(
-    directory: PathBuf,
-    pages: Vec<PathBuf>,
-    page: usize,
-    cancel: Arc<AtomicBool>,
-) -> Result<PreviewImages> {
-    static DECODE: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _decode = DECODE.lock().unwrap_or_else(|e| e.into_inner());
-    anyhow::ensure!(!cancel.load(Ordering::Acquire), "Preview cancelled");
-    fn load(path: PathBuf, width: u32, height: u32) -> Result<Arc<gpui::RenderImage>> {
-        let image = image::open(path)?.thumbnail(width, height);
-        let mut pixels = image.into_rgba8();
-        for pixel in pixels.pixels_mut() {
-            pixel.0.swap(0, 2);
-        }
-        Ok(Arc::new(gpui::RenderImage::new(vec![image::Frame::new(
-            pixels,
-        )])))
-    }
-    let active = pages.get(page).context("Preview page is unavailable")?;
-    let image = load(directory.join(active), 2048, 2048)?;
-    let start = page.saturating_sub(2).min(pages.len().saturating_sub(5));
-    let mut thumbnails = Vec::new();
-    for (i, page) in pages.iter().enumerate().skip(start).take(5) {
-        anyhow::ensure!(!cancel.load(Ordering::Acquire), "Preview cancelled");
-        thumbnails.push((i, load(directory.join(page), 120, 176)?));
-    }
-    Ok((image, thumbnails))
-}

@@ -59,7 +59,10 @@ impl PlatformAtlas for MetalAtlas {
 
     fn remove(&self, key: &AtlasKey) {
         let mut lock = self.0.lock();
-        let Some(id) = lock.tiles_by_key.get(key).map(|v| v.texture_id) else {
+        // Remove the key even when other tiles keep this texture alive. A
+        // retained key would reuse an evicted tile and decrement its refcount
+        // again on the next tab switch, eventually freeing another live image.
+        let Some(id) = lock.tiles_by_key.remove(key).map(|v| v.texture_id) else {
             return;
         };
 
@@ -81,7 +84,6 @@ impl PlatformAtlas for MetalAtlas {
 
             if texture.is_unreferenced() {
                 textures.free_list.push(id.index as usize);
-                lock.tiles_by_key.remove(key);
             } else {
                 *texture_slot = Some(texture);
             }
@@ -279,3 +281,48 @@ impl From<etagere::Rectangle> for Bounds<DevicePixels> {
 struct AssertSend<T>(T);
 
 unsafe impl<T> Send for AssertSend<T> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ImageId, RenderImageParams, size};
+
+    #[test]
+    #[ignore = "Requires a Metal device"]
+    fn evicted_image_can_be_reused_without_freeing_its_neighbor() {
+        let atlas = MetalAtlas::new(Device::system_default().expect("Metal device"));
+        let key = |id| {
+            AtlasKey::Image(RenderImageParams {
+                image_id: ImageId(id),
+                frame_index: 0,
+            })
+        };
+        let build = || {
+            Ok(Some((
+                size(DevicePixels(8), DevicePixels(8)),
+                Cow::Owned(vec![255; 8 * 8 * 4]),
+            )))
+        };
+        let neighbor = atlas
+            .get_or_insert_with(&key(1), &mut { build })
+            .unwrap()
+            .unwrap();
+        for _ in 0..100 {
+            let tile = atlas
+                .get_or_insert_with(&key(2), &mut { build })
+                .unwrap()
+                .unwrap();
+            assert_eq!(tile.texture_id, neighbor.texture_id);
+            atlas.remove(&key(2));
+            assert!(!atlas.0.lock().tiles_by_key.contains_key(&key(2)));
+            atlas.remove(&key(2)); // Duplicate release must not decrement the neighbor.
+            assert_eq!(
+                atlas.0.lock().texture(neighbor.texture_id).live_atlas_keys,
+                1
+            );
+            let _ = atlas.metal_texture(neighbor.texture_id);
+        }
+        atlas.remove(&key(1));
+        assert!(atlas.0.lock().tiles_by_key.is_empty());
+    }
+}

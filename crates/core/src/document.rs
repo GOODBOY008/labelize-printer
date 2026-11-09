@@ -161,7 +161,7 @@ pub struct PreviewRequest {
     pub kind: DocumentKind,
     pub settings: Settings,
 }
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PreviewPage {
     pub file: PathBuf,
     pub width_mm: f64,

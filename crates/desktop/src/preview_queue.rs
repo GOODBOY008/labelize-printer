@@ -48,6 +48,7 @@ struct State<T> {
     active: Option<String>,
     running: Option<(String, Arc<AtomicBool>)>,
     stopped: bool,
+    paused: bool,
 }
 struct Shared<T> {
     state: Mutex<State<T>>,
@@ -69,6 +70,7 @@ impl<T: Send + 'static> PreviewQueue<T> {
                 active: None,
                 running: None,
                 stopped: false,
+                paused: false,
             }),
             wake: Condvar::new(),
         });
@@ -103,6 +105,20 @@ impl<T: Send + 'static> PreviewQueue<T> {
         });
         Self { shared }
     }
+    pub fn pause(&self) {
+        let mut state = self.shared.state.lock().unwrap();
+        state.paused = true;
+        state.pending.clear();
+        if let Some((_, cancel)) = &state.running {
+            cancel.store(true, Ordering::Release);
+        }
+    }
+    pub fn resume(&self) {
+        self.shared.state.lock().unwrap().paused = false;
+    }
+    pub fn idle(&self) -> bool {
+        self.shared.state.lock().unwrap().running.is_none()
+    }
     pub fn activate(&self, id: Option<String>) {
         let mut state = self.shared.state.lock().unwrap();
         state.active = id;
@@ -123,6 +139,10 @@ impl<T: Send + 'static> PreviewQueue<T> {
     ) -> async_channel::Receiver<Result<T, String>> {
         let (tx, rx) = async_channel::bounded(1);
         let mut state = self.shared.state.lock().unwrap();
+        if state.paused || state.stopped {
+            let _ = tx.send_blocking(Err("Preview cancelled".into()));
+            return rx;
+        }
         state.pending.retain(|r| r.id != id);
         if let Some((running, cancel)) = &state.running {
             if running == &id || state.active.as_ref() == Some(&id) {
@@ -212,5 +232,39 @@ mod tests {
         assert_eq!(background.recv_blocking().unwrap().unwrap(), 2);
         assert_eq!(order_rx.recv().unwrap(), 1);
         assert_eq!(order_rx.recv().unwrap(), 2);
+    }
+    #[test]
+    fn update_pause_reaps_running_preview_and_rejects_new_work_until_resume() {
+        let queue = PreviewQueue::new();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let running = queue.submit("a".into(), move |cancel| {
+            tx.send(()).unwrap();
+            while !cancel.load(Ordering::Acquire) {
+                thread::sleep(Duration::from_millis(1));
+            }
+            Ok(1)
+        });
+        rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        queue.pause();
+        assert!(queue
+            .submit("b".into(), |_| panic!("must not render during update"))
+            .recv_blocking()
+            .unwrap()
+            .is_err());
+        assert!(running.recv_blocking().unwrap().is_err());
+        let until = std::time::Instant::now() + Duration::from_secs(2);
+        while !queue.idle() {
+            assert!(std::time::Instant::now() < until);
+            thread::yield_now();
+        }
+        queue.resume();
+        assert_eq!(
+            queue
+                .submit("b".into(), |_| Ok(2))
+                .recv_blocking()
+                .unwrap()
+                .unwrap(),
+            2
+        );
     }
 }

@@ -10,6 +10,7 @@ use gpui_component::{
     Disableable, IconName, Sizable,
 };
 use labelize_printer::{
+    preview_images::PreviewCache,
     preview_queue::PreviewQueue,
     session::{self, Draft, SessionStore, Workspace},
 };
@@ -21,7 +22,7 @@ use labelize_printer_core::{
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -40,6 +41,7 @@ pub struct Workbench {
     pub setup_dismissed: bool,
     store: Arc<SessionStore>,
     queue: Arc<PreviewQueue<Preview>>,
+    images: Arc<Mutex<PreviewCache>>,
     sequence: u64,
     versions: HashMap<String, u64>,
     save_due: Option<Instant>,
@@ -87,7 +89,6 @@ impl Workbench {
                     s.last_saved = true;
                 }
                 for path in std::mem::take(&mut s.pending_open) { s.open_path(path, window, cx); }
-                window.refresh();
                 cx.notify();
             });
         }).detach();
@@ -110,6 +111,7 @@ impl Workbench {
             setup_dismissed: false,
             store,
             queue: Arc::new(PreviewQueue::new()),
+            images: Arc::new(Mutex::new(PreviewCache::default())),
             sequence: 0,
             versions: HashMap::new(),
             save_due: None,
@@ -183,7 +185,8 @@ impl Workbench {
         let queue = self.queue.clone();
         let paths = self.paths.clone();
         let language = self.language;
-        let tab = cx.new(|cx| Studio::new(paths, language, draft, queue, window, cx));
+        let images = self.images.clone();
+        let tab = cx.new(|cx| Studio::new(paths, language, draft, queue, images, window, cx));
         self.versions.insert(id.clone(), 0);
         cx.observe_in(&tab, window, |s, tab, w, cx| {
             let doc = tab.read(cx);
@@ -202,8 +205,12 @@ impl Workbench {
                 }
                 s.changed(cx);
             }
-            w.refresh();
-            cx.notify();
+            // Invalidate only for the visible document. Root schedules one
+            // frame after notifications; refreshing here would bypass it and
+            // can leave GPUI 0.2.2 painting a scene with evicted textures.
+            if s.visible && s.active.as_deref() == Some(&tab.read(cx).id) {
+                cx.notify();
+            }
         })
         .detach();
         self.tabs.push(tab);
@@ -216,9 +223,11 @@ impl Workbench {
         let changed = self.active.as_deref() != Some(id);
         self.active = Some(id.into());
         self.queue.activate(self.active.clone());
-        for tab in &self.tabs {
-            let active = self.visible && tab.read(cx).id == id;
-            tab.update(cx, |s, cx| s.set_active(active, window, cx));
+        if changed {
+            for tab in &self.tabs {
+                let active = self.visible && tab.read(cx).id == id;
+                tab.update(cx, |s, cx| s.set_active(active, window, cx));
+            }
         }
         self.documents_menu = false;
         self.focus.focus(window);
@@ -228,7 +237,6 @@ impl Workbench {
         if changed {
             self.changed(cx);
         }
-        window.refresh();
         cx.notify();
     }
     fn remove(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -289,6 +297,14 @@ impl Workbench {
             })
             .detach();
         }
+    }
+    pub fn resume_update_previews(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.queue.resume();
+        // Re-arm any stale active document cancelled by update preparation.
+        self.set_visible(self.visible, window, cx);
+    }
+    pub fn update_previews(&self) -> Arc<PreviewQueue<Preview>> {
+        self.queue.clone()
     }
     pub fn request_close(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> bool {
         let pending: Vec<_> = self

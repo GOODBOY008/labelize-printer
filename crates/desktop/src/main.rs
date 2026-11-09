@@ -1,10 +1,11 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 mod branding;
-mod i18n;
+use labelize_printer::i18n;
 mod studio;
 mod studio_worker;
 mod ui;
+mod updates;
 mod workbench;
 mod worker;
 
@@ -50,6 +51,10 @@ impl log::Log for DesktopLogger {
 }
 
 fn main() -> anyhow::Result<()> {
+    if std::env::args().nth(1).as_deref() == Some("--version") {
+        println!("labelize-printer {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
     let _ = log::set_logger(&DesktopLogger);
     log::set_max_level(if std::env::var_os("LABELIZE_PRINTER_DEBUG").is_some() {
         log::LevelFilter::Debug
@@ -57,6 +62,9 @@ fn main() -> anyhow::Result<()> {
         log::LevelFilter::Warn
     });
     let paths = AppPaths::discover()?;
+    if labelize_printer_updater::handoff::redirect_if_installing(&paths)? {
+        return Ok(());
+    }
     let preferences = Preferences::load(&paths.root.join("desktop.json")).unwrap_or_else(|error| {
         log::warn!("{error:#}");
         Preferences::default()
@@ -212,10 +220,10 @@ fn main() -> anyhow::Result<()> {
                     {
                         view.update(cx, |app, cx| app.open_document(path, window, cx));
                     }
-                    // Root owns an erased AnyView. Explicitly invalidate the window
-                    // when its child model changes, including IPC updates.
-                    cx.observe(&view, |_, cx| cx.refresh_windows()).detach();
                     cx.activate(true);
+                    // Invalidate once at Root, after document/app notifications
+                    // and deferred texture releases have been processed.
+                    cx.observe(&view, |_, cx| cx.refresh_windows()).detach();
                     cx.new(|cx| Root::new(view, window, cx))
                 },
             )

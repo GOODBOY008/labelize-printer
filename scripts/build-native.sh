@@ -8,6 +8,7 @@ if [[ -f "$ssl_prefix/lib/pkgconfig/openssl.pc" ]]; then
   export PKG_CONFIG_PATH="$ssl_prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 fi
 profile="${1:-debug}"
+app_version="$(python3 scripts/package-version.py)"
 mkdir -p .cache "target/$profile"
 version=1.4.12
 archive=".cache/pappl-$version.tar.gz"
@@ -65,7 +66,7 @@ else
   extra=(-ldl -lavahi-client -lavahi-common)
 fi
 read -r -a cc_flags <<< "$native_flags"
-${CC:-cc} -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror "${cc_flags[@]}" "${ssl_cflags[@]}" \
+${CC:-cc} -std=c11 -D_DEFAULT_SOURCE -DLABELIZE_PRINTER_VERSION=\"$app_version\" -Wall -Wextra -Werror "${cc_flags[@]}" "${ssl_cflags[@]}" \
   -I"$source_dir" native/ipp/adapter.c "$source_dir/pappl/libpappl.a" \
   "$ssl_dir/libssl.a" "$ssl_dir/libcrypto.a" -lcups -lz -lm -lpthread "${extra[@]}" \
   -o "target/$profile/labelize-printer-ipp"

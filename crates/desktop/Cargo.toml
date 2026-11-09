@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 labelize-printer-core.workspace = true
+labelize-printer-updater = { path = "../updater" }
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true

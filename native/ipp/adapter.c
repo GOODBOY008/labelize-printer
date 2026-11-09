@@ -285,6 +285,7 @@ static bool monitor_parent(pappl_system_t *system, void *data) {
 }
 
 int main(int argc, char **argv) {
+  if (argc == 2 && !strcmp(argv[1], "--version")) { printf("labelize-printer-ipp %s\n", LABELIZE_PRINTER_VERSION); return 0; }
   int port = 8631;
   umask(0077);
   for (int i = 1; i + 1 < argc; i += 2) {

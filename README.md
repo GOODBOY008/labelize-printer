@@ -8,7 +8,7 @@
 
 [Download](https://github.com/GOODBOY008/labelize-printer/releases) · [Development guide](DEVELOPMENT.md) · [Architecture](ARCHITECTURE.md) · [Report an issue](https://github.com/GOODBOY008/labelize-printer/issues)
 
-Labelize Printer is a desktop label workspace and local virtual printer for Windows, macOS, and Linux, built with Rust and GPUI. Select **Labelize Printer** in your system print dialog to save a job as one multipage PDF or one PNG per page. A background service keeps processing jobs after you close the window. Everything runs locally, without a cloud service.
+Labelize Printer is a desktop label workspace and local virtual printer for Windows, macOS, and Linux, built with Rust and GPUI. Select **Labelize Printer** in your system print dialog to save a job as one multipage PDF or one PNG per page. A background service keeps processing jobs after you close the window. Label processing runs locally, without a cloud service. Optional software-update checks contact GitHub.
 
 It uses the [Labelize rendering engine](https://github.com/GOODBOY008/labelize) to parse and render printer-language files. The desktop app adds printer setup, output settings, job history, and a visual label designer. Labelize itself is also available as a library, CLI, HTTP service, WebAssembly package, and Android library.
 
@@ -23,6 +23,7 @@ It uses the [Labelize rendering engine](https://github.com/GOODBOY008/labelize) 
 | Label files | Open ZPL, EPL, TSPL/TSC, CPCL, or DPL; edit supported text files and preview each page. | v0.2.0 |
 | Visual design | Add text, Code 128, QR codes, rectangles, and images; move objects and edit their dimensions. | v0.2.0 |
 | Multi-tab workspace | Independent edits, automatic previews, recent files, and local session/draft recovery. | v0.3.0 |
+| Software updates | Stable-release checks, verified full installers, and package-manager-aware handoff. | Current source (unreleased) |
 | Portable templates | Save editable `.labelize.json` templates with embedded images and imported fonts. | v0.2.0 |
 
 ## Install
@@ -45,6 +46,14 @@ brew install --cask goodboy008/labelize-printer/labelize-printer
 ```
 
 See the [Homebrew tap](https://github.com/GOODBOY008/homebrew-labelize-printer) for upgrade instructions. For Debian or Ubuntu, use `sudo apt install ./<downloaded-package>.deb` to install the downloaded package with its dependencies.
+
+### Software updates
+
+The current source tree adds **Settings → Software update**. It checks stable GitHub releases at startup at most once every 24 hours; you can turn this off or check manually. Downloading and installing always require your action. The first release containing this feature must be installed through an installer or Homebrew once; v0.3.0 does not include it.
+
+Direct installations download the matching full installer and verify its size and SHA256 against both `SHA256SUMS` and GitHub's asset digest. Homebrew installations keep using Homebrew. On Linux, a missing DEB handler falls back to the downloaded file and a safely quoted `apt` command.
+
+Before installation, the app retains your workspace drafts, waits for file operations, and requires the print queue to be idle. **Quit and install** pauses printing and hands off to the system installer. Finish or cancel installation, then reopen the app to verify the installed components and restore your workspace. Trial packages remain unsigned. See [Software updates](UPDATES.md) for recovery and release requirements.
 
 ### First print
 

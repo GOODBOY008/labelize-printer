@@ -102,7 +102,9 @@ ZPL parsing uses `parse_with_options` to enable declared dimensions, complete-fo
 
 ## Desktop previews and designs
 
-`core::document::render` is shared by preview and export, including page order, dimensions, and canvas limits. The desktop starts the daemon's standalone `preview` subcommand with a 300-second timeout. That process writes PNG pages and page metadata; the desktop decodes display images off the UI thread, serializes decoding, and cancels obsolete page loads. It holds one display image bounded to 2048 × 2048 pixels and at most five 120 × 176 thumbnails. Full-resolution preview files remain on disk. Inactive and closed tabs explicitly evict their GPU textures. Temporary preview directories are owned by the desktop and cleaned up when their handles are dropped.
+`core::document::render` is shared by preview and export, including page order, dimensions, and canvas limits. The desktop starts the daemon's standalone `preview` subcommand with a 300-second timeout. That process writes PNG pages and page metadata; the desktop decodes display images off the UI thread, serializes decoding, and cancels obsolete page loads. A display image is bounded to 2048 × 2048 pixels without enlarging smaller pages, alongside at most five 120 × 176 thumbnails. Full-resolution preview files remain on disk.
+
+`preview_images` keeps decoded images in a shared 64 MiB CPU LRU cache, keyed by the render's unique temporary directory and page number. Switching back to a cached page displays it synchronously, without reading PNGs or starting a renderer. New revisions and closed documents remove their old entries. Cache misses retain the last successful image and its dimensions until a replacement is ready; the updating indicator overlays the canvas without changing its size. Inactive and closed tabs still evict GPU textures at the next frame boundary, rebuilding that frame to avoid presenting a scene with freed textures. Ancestor notifications are consolidated into the required root invalidation. Temporary preview directories are owned by the desktop and cleaned up when their handles are dropped.
 
 `desktop::workbench` owns independent `Studio` document entities. Editors, selected objects, undo history, revisions, page selection, and export options belong to a document, while queue setup and defaults remain application-level settings. File loading, saving, preview rendering, and job submission have separate states.
 
@@ -148,3 +150,9 @@ Dimensions and resolutions must be finite and valid. Jobs must be self-contained
 - [PAPPL 1.4.12 source](https://github.com/michaelrsweet/pappl/releases/tag/v1.4.12)
 - [Zebra ZPL Programming Guide](https://www.zebra.com/content/dam/support-dam/en/documentation/unrestricted/guide/software/zpl-zbi2-pg-en.pdf)
 - [OpenSSL source releases](https://www.openssl-library.org/source/)
+
+## Application updates
+
+The independent `crates/updater` library and helper handle stable-release discovery, installer verification and platform handoff. Desktop checks/downloads run independently from print-status polling and label previews. The helper has no GPUI dependency and executes from private storage outside the installation directory.
+
+An authenticated, expiring admission lease coordinates `PrepareUpdate`, `CancelUpdate` and `CommitUpdate` with RAW sockets, IPP task creation, local submissions and retries. A durable pending record blocks supervisor restarts while installation is incomplete. Reopening verifies component versions and the system package receipt before resuming printing and workspace recovery. See [UPDATES.md](UPDATES.md) for the platform routes, failure behavior and release-asset contract.

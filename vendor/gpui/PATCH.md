@@ -18,3 +18,12 @@ On Windows, `src/platform/windows/directx_renderer.rs` compiles debug shaders
 from embedded HLSL. This lets the internal installer run without the source
 checkout on the destination machine. `crates/desktop/build.rs` embeds GPUI's
 Common Controls v6 and DPI manifest for MinGW cross builds.
+
+On macOS, `src/platform/mac/metal_atlas.rs` removes each evicted image key
+immediately, matching the DirectX and Blade backends. Previously it kept the key
+while another image shared the texture. Reusing a decoded preview then decremented
+the same key repeatedly, freeing textures still referenced by other images and
+panicking in `MetalAtlasState::texture`. The Metal regression test exercises
+repeated removal/reinsertion while a neighboring tile remains live. The desktop
+also releases textures at a frame boundary and rebuilds that frame so a retained
+previous scene cannot reference an evicted texture.

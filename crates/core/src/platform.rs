@@ -342,6 +342,7 @@ fn shell_quote(s: &str) -> String {
 }
 
 pub fn ensure_daemon(paths: &AppPaths) -> Result<()> {
+    crate::maintenance::require_ready(paths)?;
     if ipc::request(paths, Request::Status).is_ok() {
         return Ok(());
     }

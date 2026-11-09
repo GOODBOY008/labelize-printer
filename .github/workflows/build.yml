@@ -51,8 +51,10 @@ jobs:
       - run: bash scripts/build-openssl.sh
       - run: cargo build --workspace --release --locked
       - run: bash scripts/build-native.sh release
+      - run: cargo test -p labelize-printer-updater --release --locked
       - run: cargo test -p labelize-printer-core --release --locked
       - run: cargo test -p labelize-printer --lib --release --locked
+      - run: python3 scripts/update-smoke.py --profile release
       - run: python3 scripts/smoke.py --profile release
       - run: python3 scripts/collect-licenses.py
       - run: bash scripts/package-macos.sh
@@ -75,14 +77,16 @@ jobs:
       - name: Check Windows runtime dependencies
         run: |
           $objdump = Join-Path $env:ProgramFiles 'LLVM\bin\llvm-objdump.exe'
-          foreach ($binary in @('labelize-printer', 'labelize-printer-daemon')) {
+          foreach ($binary in @('labelize-printer', 'labelize-printer-daemon', 'labelize-printer-updater')) {
             $imports = & $objdump -p "target\release\$binary.exe"
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
             $runtime = $imports | Select-String 'DLL Name:\s+(vcruntime|msvcp|msvcr|concrt)[0-9][^\s]*\.dll'
             if ($runtime) { throw "$binary needs a separate Visual C++ runtime ($runtime)" }
           }
+      - run: cargo test -p labelize-printer-updater --release --locked
       - run: cargo test -p labelize-printer-core --release --locked
       - run: cargo test -p labelize-printer --lib --release --locked
+      - run: python scripts/update-smoke.py --profile release
       - run: python scripts/smoke.py --profile release --skip-ipp
       - run: python scripts/collect-licenses.py
       - name: Build NSIS installer
@@ -119,8 +123,10 @@ jobs:
             cargo build --workspace --release --locked
             bash scripts/build-openssl.sh
             bash scripts/build-native.sh release
+            cargo test -p labelize-printer-updater --release --locked
             cargo test -p labelize-printer-core --release --locked
             cargo test -p labelize-printer --lib --release --locked
+            python3 scripts/update-smoke.py --profile release
             python3 scripts/smoke.py --profile release
             python3 scripts/collect-licenses.py
             bash scripts/package-linux.sh

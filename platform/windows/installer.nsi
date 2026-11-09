@@ -1,6 +1,9 @@
 Unicode True
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
+!include "FileFunc.nsh"
+Var UpdateMode
+!define MUI_FINISHPAGE_RUN_FUNCTION LaunchDesktop
 Name "Labelize Printer"
 !ifndef APP_VERSION
   !error "Pass APP_VERSION from scripts/package-version.py"
@@ -19,12 +22,35 @@ RequestExecutionLevel user
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
-!define MUI_FINISHPAGE_RUN "$INSTDIR\labelize-printer.exe"
+!define MUI_FINISHPAGE_RUN
 !define MUI_FINISHPAGE_RUN_TEXT "Open Labelize Printer to configure the ZDesigner queue"
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW UpdateFinishPage
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
+Function .onInit
+  ${GetParameters} $R0
+  ClearErrors
+  ${GetOptions} $R0 "/LABELIZEUPDATE" $R1
+  ${IfNot} ${Errors}
+    StrCpy $UpdateMode "1"
+  ${EndIf}
+FunctionEnd
+
+Function UpdateFinishPage
+  ${If} $UpdateMode == "1"
+    ShowWindow $mui.FinishPage.Run ${SW_HIDE}
+  ${EndIf}
+FunctionEnd
+
+Function LaunchDesktop
+  ; In-app handoff owns the pending marker. Reopen after the installer exits.
+  ${If} $UpdateMode != "1"
+    Exec '"$INSTDIR\labelize-printer.exe"'
+  ${EndIf}
+FunctionEnd
+
 Section "Labelize Printer"
   IfFileExists "$INSTDIR\labelize-printer-daemon.exe" 0 ready
     ; Use the new client so an older executable with a missing runtime can be upgraded.
@@ -42,6 +68,7 @@ Section "Labelize Printer"
   ready:
   SetOutPath "$INSTDIR"
   File "${BIN_DIR}\labelize-printer.exe"
+  File "${BIN_DIR}\labelize-printer-updater.exe"
   File "${BIN_DIR}\labelize-printer-daemon.exe"
   File "..\..\LICENSE"
   File "..\..\THIRD_PARTY_NOTICES.md"
@@ -69,6 +96,7 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\Labelize Printer.lnk"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\LabelizePrinter"
   Delete "$INSTDIR\labelize-printer.exe"
+  Delete "$INSTDIR\labelize-printer-updater.exe"
   Delete "$INSTDIR\labelize-printer-daemon.exe"
   Delete "$INSTDIR\LICENSE"
   Delete "$INSTDIR\THIRD_PARTY_NOTICES.md"

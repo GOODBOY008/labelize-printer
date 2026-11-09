@@ -1,6 +1,7 @@
 pub mod design;
 pub mod document;
 pub mod ipc;
+pub mod maintenance;
 pub mod model;
 pub mod output;
 pub mod paths;
