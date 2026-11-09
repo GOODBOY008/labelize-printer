@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "width_mm": 80.0,
+  "height_mm": 100.0,
+  "objects": [
+    {"kind": "text", "x": 5.0, "y": 5.0, "width": 65.0, "height": 12.0, "text": "Legacy template", "font_mm": 4.0, "stroke_mm": 0.5},
+    {"kind": "qr", "x": 5.0, "y": 25.0, "width": 25.0, "height": 25.0, "text": "Labelize v1", "font_mm": 4.0, "stroke_mm": 0.5},
+    {"kind": "code128", "x": 5.0, "y": 60.0, "width": 55.0, "height": 15.0, "text": "1234567890", "font_mm": 4.0, "stroke_mm": 0.5},
+    {"kind": "rectangle", "x": 3.0, "y": 3.0, "width": 74.0, "height": 94.0, "text": "", "font_mm": 4.0, "stroke_mm": 0.5}
+  ]
+}

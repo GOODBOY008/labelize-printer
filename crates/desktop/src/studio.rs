@@ -16,7 +16,10 @@ use labelize_printer::{
     session::{self, Draft},
 };
 use labelize_printer_core::{
-    design::{DesignDocument, DesignObject, ObjectKind},
+    design::{
+        Alignment, Background, DesignDocument, DesignObject, HorizontalAlign, ImageFit, LayerOrder,
+        LineDirection, MatrixShape, ObjectKind, QrEcc, TextFont, VerticalAlign, TEMPLATE_VERSION,
+    },
     document::{self, DocumentKind},
     paths::atomic_write,
     AppPaths, OutputFormat, Settings,
@@ -29,6 +32,19 @@ use std::{
     },
     time::{Duration, Instant},
 };
+
+#[path = "studio_properties.rs"]
+mod properties;
+
+#[derive(Clone, Copy)]
+struct ObjectDrag {
+    origin: Point<Pixels>,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    resize: bool,
+}
 
 /// One document session. All editor state and undo history belongs to this entity.
 pub struct Studio {
@@ -68,7 +84,7 @@ pub struct Studio {
     outputs: Vec<PathBuf>,
     undo: Vec<DesignDocument>,
     redo: Vec<DesignDocument>,
-    drag: Option<(Point<Pixels>, f64, f64)>,
+    drag: Option<ObjectDrag>,
     queue: Arc<PreviewQueue<Preview>>,
     due: Option<Instant>,
     active: bool,
@@ -99,8 +115,17 @@ impl Studio {
             this.release_images(cx);
         })
         .detach();
-        let fields: Vec<_> = (0..9)
-            .map(|_| cx.new(|cx| InputState::new(window, cx)))
+        let fields: Vec<_> = (0..session::DESIGN_FIELD_COUNT)
+            .map(|index| {
+                cx.new(|cx| {
+                    let input = InputState::new(window, cx);
+                    if index == 8 {
+                        input.multi_line(true).rows(3)
+                    } else {
+                        input
+                    }
+                })
+            })
             .collect();
         let editor = cx.new(|cx| {
             InputState::new(window, cx)
@@ -172,7 +197,7 @@ impl Studio {
         };
         this.sync_form(window, cx);
         // Restore raw fields after the validated model: even incomplete numbers survive a crash.
-        if raw_fields.len() == 9 {
+        if !raw_fields.is_empty() {
             for (field, value) in this.fields.iter().zip(raw_fields) {
                 field.update(cx, |i, cx| i.set_value(value, window, cx));
             }
@@ -302,6 +327,14 @@ impl Studio {
             number(o.map_or(4., |o| o.font_mm)),
             number(o.map_or(0.5, |o| o.stroke_mm)),
             o.map_or(String::new(), |o| o.text.clone()),
+            o.map_or(String::new(), |o| o.style.name.clone()),
+            number(o.map_or(1., |o| o.style.line_spacing)),
+            number(o.map_or(0., |o| o.style.corner_radius_mm)),
+            number(o.map_or(0., |o| o.style.module_mm)),
+            o.map_or(0, |o| o.style.quiet_modules).to_string(),
+            o.map_or(0, |o| o.style.pdf417_columns).to_string(),
+            o.map_or(2, |o| o.style.pdf417_security).to_string(),
+            o.map_or(128, |o| o.style.image_threshold).to_string(),
         ]
     }
     fn form_changed(&self, cx: &App) -> bool {
@@ -366,7 +399,11 @@ impl Studio {
             let mut next = design.clone();
             next.width_mm = w;
             next.height_mm = h;
-            if let Some(o) = self.selected.and_then(|i| next.objects.get_mut(i)) {
+            if let Some(o) = self
+                .selected
+                .and_then(|i| next.objects.get_mut(i))
+                .filter(|o| !o.style.locked)
+            {
                 o.x = n(2)?;
                 o.y = n(3)?;
                 o.width = n(4)?;
@@ -374,9 +411,34 @@ impl Studio {
                 o.font_mm = n(6)?;
                 o.stroke_mm = n(7)?;
                 o.text = self.fields[8].read(cx).value().to_string();
+                o.style.name = self.fields[9].read(cx).value().to_string();
+                o.style.line_spacing = n(10)?;
+                o.style.corner_radius_mm = n(11)?;
+                o.style.module_mm = n(12)?;
+                o.style.quiet_modules = self.fields[13]
+                    .read(cx)
+                    .value()
+                    .parse()
+                    .context("Quiet zone must be a whole number")?;
+                o.style.pdf417_columns = self.fields[14]
+                    .read(cx)
+                    .value()
+                    .parse()
+                    .context("Columns must be a whole number")?;
+                o.style.pdf417_security = self.fields[15]
+                    .read(cx)
+                    .value()
+                    .parse()
+                    .context("Error correction must be a whole number")?;
+                o.style.image_threshold = self.fields[16]
+                    .read(cx)
+                    .value()
+                    .parse()
+                    .context("Image threshold must be 0–255")?;
             }
             next.validate(settings.dpmm)?;
             if &next != design {
+                next.version = TEMPLATE_VERSION;
                 self.remember();
                 self.design = Some(next);
             }
@@ -389,7 +451,9 @@ impl Studio {
     fn payload(&mut self, cx: &mut Context<Self>) -> Result<Vec<u8>> {
         self.apply_fields(cx)?;
         let bytes = if let Some(d) = &self.design {
-            serde_json::to_vec_pretty(d)?
+            let mut portable = d.clone();
+            portable.version = TEMPLATE_VERSION;
+            serde_json::to_vec_pretty(&portable)?
         } else {
             self.source.clone()
         };
@@ -767,8 +831,19 @@ impl Studio {
                 let result = (|| -> Result<()> {
                     let bytes = read?;
                     s.apply_fields(cx)?;
-                    if purpose == 1 {
+                    if purpose == 1 || purpose == 3 {
                         let image = labelize_printer_core::design::normalize_image(&bytes)?;
+                        if purpose == 3 {
+                            return s.edit_design(w, cx, move |d, i| {
+                                let o = d.objects.get_mut(i).context("Select an image")?;
+                                ensure!(
+                                    o.kind == ObjectKind::Image && !o.style.locked,
+                                    "Select an unlocked image"
+                                );
+                                o.image = image;
+                                Ok(i)
+                            });
+                        }
                         ensure!(
                             s.design.as_ref().is_some_and(|d| d.objects.len() < 100),
                             "At most 100 objects"
@@ -839,8 +914,10 @@ impl Studio {
         self.remember();
         if let (Some(d), Some(i)) = (&mut self.design, self.selected) {
             let mut o = d.objects[i].clone();
-            o.x = (o.x + 2.).min(d.width_mm - o.width);
-            o.y = (o.y + 2.).min(d.height_mm - o.height);
+            let (width, height) = o.bounds_size();
+            o.x = (o.x + 2.).min(d.width_mm - width);
+            o.y = (o.y + 2.).min(d.height_mm - height);
+            o.style.locked = false;
             d.objects.push(o);
             self.selected = Some(d.objects.len() - 1);
         }
@@ -848,6 +925,9 @@ impl Studio {
         self.sync_form(window, cx);
     }
     fn delete(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.selected_object().is_some_and(|o| o.style.locked) {
+            return;
+        }
         self.remember();
         if let (Some(d), Some(i)) = (&mut self.design, self.selected) {
             if i < d.objects.len() {
@@ -871,12 +951,15 @@ impl Studio {
                 return;
             }
             let mut object = DesignObject::new(kind);
+            object.x += (d.objects.len() % 5) as f64 * 2.;
+            object.y += (d.objects.len() % 5) as f64 * 2.;
             fit(&mut object, d);
             d.objects.push(object);
             self.selected = Some(d.objects.len() - 1);
         }
         self.changed(cx);
         self.sync_form(window, cx);
+        self.focus.focus(window);
         self.render_preview(window, cx);
     }
     fn select(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -887,10 +970,18 @@ impl Studio {
         self.selected = Some(index);
         self.persist_version += 1;
         self.sync_form(window, cx);
+        self.focus.focus(window);
     }
     pub fn history(&mut self, redo: bool, window: &mut Window, cx: &mut Context<Self>) {
         if let Err(e) = self.apply_fields(cx) {
-            self.fail(e, cx);
+            // Undo must also recover from an unfinished numeric entry.
+            if !redo {
+                self.sync_form(window, cx);
+                self.preview_error = None;
+                self.changed(cx);
+            } else {
+                self.fail(e, cx);
+            }
             return;
         }
         let next = if redo {
@@ -906,10 +997,13 @@ impl Studio {
                     self.redo.push(old);
                 }
             }
-            self.selected = self
-                .design
-                .as_ref()
-                .and_then(|d| (!d.objects.is_empty()).then_some(0));
+            self.selected = self.design.as_ref().and_then(|d| {
+                (!d.objects.is_empty()).then_some(
+                    self.selected
+                        .unwrap_or(0)
+                        .min(d.objects.len().saturating_sub(1)),
+                )
+            });
             self.changed(cx);
             self.sync_form(window, cx);
             self.render_preview(window, cx);
@@ -919,8 +1013,18 @@ impl Studio {
         match kind {
             ObjectKind::Text => self.t("文字", "Text"),
             ObjectKind::Code128 => "Code 128",
+            ObjectKind::Code39 => "Code 39",
+            ObjectKind::Ean13 => "EAN-13",
+            ObjectKind::Ean8 => "EAN-8",
+            ObjectKind::Upca => "UPC-A",
+            ObjectKind::Itf => "ITF",
             ObjectKind::Qr => self.t("二维码", "QR code"),
+            ObjectKind::DataMatrix => "Data Matrix",
+            ObjectKind::Pdf417 => "PDF417",
+            ObjectKind::Aztec => "Aztec",
             ObjectKind::Rectangle => self.t("矩形", "Rectangle"),
+            ObjectKind::Ellipse => self.t("圆形 / 椭圆", "Ellipse"),
+            ObjectKind::Line => self.t("线条", "Line"),
             ObjectKind::Image => self.t("图片", "Image"),
         }
     }
@@ -939,7 +1043,88 @@ impl Studio {
                     .text_color(rgb(MUTED))
                     .child(label),
             )
-            .child(Input::new(&self.fields[index]).disabled(self.loading))
+            .child(Input::new(&self.fields[index]).disabled(
+                self.loading
+                    || index >= 2 && self.selected_object().is_some_and(|o| o.style.locked),
+            ))
+    }
+    fn selected_object(&self) -> Option<&DesignObject> {
+        self.design
+            .as_ref()
+            .and_then(|d| self.selected.and_then(|i| d.objects.get(i)))
+    }
+    fn edit_design(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        edit: impl FnOnce(&mut DesignDocument, usize) -> Result<usize>,
+    ) -> Result<()> {
+        self.apply_fields(cx)?;
+        let mut next = self.design.clone().context("Open a design")?;
+        let selected = edit(&mut next, self.selected.context("Select an object")?)?;
+        next.version = TEMPLATE_VERSION;
+        next.validate(self.options.dpmm)?;
+        if self.design.as_ref() != Some(&next) {
+            self.remember();
+            self.design = Some(next);
+            self.selected = Some(selected);
+            self.changed(cx);
+            self.sync_form(window, cx);
+        }
+        Ok(())
+    }
+    fn change_style(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        edit: impl FnOnce(&mut labelize_printer_core::design::ObjectStyle),
+    ) {
+        let result = self.edit_design(window, cx, |d, i| {
+            ensure!(
+                !d.objects[i].style.locked,
+                "Unlock this object before editing properties"
+            );
+            edit(&mut d.objects[i].style);
+            Ok(i)
+        });
+        if let Err(e) = result {
+            self.fail(e, cx);
+        }
+    }
+    fn layer_flag(
+        &mut self,
+        index: usize,
+        lock: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let result = self.edit_design(window, cx, |d, _| {
+            let style = &mut d.objects.get_mut(index).context("Select an object")?.style;
+            if lock {
+                style.locked = !style.locked;
+            } else {
+                style.visible = !style.visible;
+            }
+            Ok(index)
+        });
+        if let Err(e) = result {
+            self.fail(e, cx);
+        }
+    }
+    fn reorder_layer(&mut self, order: LayerOrder, window: &mut Window, cx: &mut Context<Self>) {
+        let result = self.edit_design(window, cx, |d, i| d.reorder(i, order));
+        if let Err(e) = result {
+            self.fail(e, cx);
+        }
+    }
+    fn align_object(&mut self, alignment: Alignment, window: &mut Window, cx: &mut Context<Self>) {
+        let result = self.edit_design(window, cx, |d, i| {
+            d.align(i, alignment)?;
+            Ok(i)
+        });
+        if let Err(e) = result {
+            self.fail(e, cx);
+        }
     }
     fn scroll_drawer(&self, direction: f32, cx: &mut Context<Self>) {
         let scroll = if self.inspector_open {
@@ -960,6 +1145,49 @@ impl Studio {
         if self.drag.take().is_some() {
             self.sync_form(window, cx);
             self.render_preview(window, cx);
+        }
+    }
+    fn begin_drag(
+        &mut self,
+        index: usize,
+        origin: Point<Pixels>,
+        resize: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Err(e) = self.apply_fields(cx) {
+            self.fail(e, cx);
+            return;
+        }
+        self.select(index, window, cx);
+        self.focus.focus(window);
+        if self.selected != Some(index) || self.selected_object().is_none_or(|o| o.style.locked) {
+            return;
+        }
+        self.remember();
+        if let Some(o) = self.selected_object() {
+            let (width, height) = o.bounds_size();
+            self.drag = Some(ObjectDrag {
+                origin,
+                x: o.x,
+                y: o.y,
+                width,
+                height,
+                resize,
+            });
+        }
+    }
+    fn nudge(&mut self, dx: f64, dy: f64, window: &mut Window, cx: &mut Context<Self>) {
+        let result = self.edit_design(window, cx, |d, i| {
+            let o = &mut d.objects[i];
+            ensure!(!o.style.locked, "Unlock this object before moving it");
+            let (w, h) = o.bounds_size();
+            o.x = (o.x + dx).clamp(0., (d.width_mm - w).max(0.));
+            o.y = (o.y + dy).clamp(0., (d.height_mm - h).max(0.));
+            Ok(i)
+        });
+        if let Err(e) = result {
+            self.fail(e, cx);
         }
     }
 }
@@ -1041,60 +1269,10 @@ impl Studio {
                     )),
                 );
         }
-        if let Some(o) = self
-            .design
-            .as_ref()
-            .and_then(|d| self.selected.and_then(|i| d.objects.get(i)))
-        {
+        if self.selected_object().is_some() {
             content = content
                 .child(div().h(px(1.)).bg(rgb(BORDER)))
-                .child(section(self.t("对象属性", "OBJECT PROPERTIES")))
-                .child(
-                    div()
-                        .text_sm()
-                        .font_weight(FontWeight::MEDIUM)
-                        .child(self.object_name(o.kind)),
-                )
-                .child(
-                    field_row()
-                        .child(self.field(2, "X · mm"))
-                        .child(self.field(3, "Y · mm")),
-                )
-                .child(
-                    field_row()
-                        .child(self.field(4, self.t("宽度 · mm", "Width · mm")))
-                        .child(self.field(5, self.t("高度 · mm", "Height · mm"))),
-                );
-            if matches!(
-                o.kind,
-                ObjectKind::Text | ObjectKind::Code128 | ObjectKind::Qr
-            ) {
-                content = content.child(self.field(8, self.t("内容", "Content")));
-            }
-            if o.kind == ObjectKind::Text {
-                content = content.child(self.field(6, self.t("字号 · mm", "Font size · mm")));
-            }
-            if o.kind == ObjectKind::Rectangle {
-                content = content.child(self.field(7, self.t("边框 · mm", "Border · mm")));
-            }
-            content = content.child(
-                row()
-                    .child(
-                        Button::new("duplicate-object")
-                            .small()
-                            .icon(IconName::Copy)
-                            .label(self.t("复制", "Duplicate"))
-                            .on_click(cx.listener(|s, _, w, cx| s.duplicate(w, cx))),
-                    )
-                    .child(
-                        Button::new("delete-object")
-                            .small()
-                            .ghost()
-                            .icon(IconName::Delete)
-                            .label(self.t("删除", "Delete"))
-                            .on_click(cx.listener(|s, _, w, cx| s.delete(w, cx))),
-                    ),
-            );
+                .child(self.object_properties(cx));
         }
         content = content
             .child(div().h(px(1.)).bg(rgb(BORDER)))
@@ -1177,12 +1355,12 @@ impl Studio {
             .gap_3()
             .p_3()
             .child(section(self.t("添加对象", "ADD OBJECT")));
-        let mut tools = row();
+        let mut tools = div().grid().grid_cols(2).gap_2();
         for (i, kind) in [
             ObjectKind::Text,
-            ObjectKind::Code128,
-            ObjectKind::Qr,
             ObjectKind::Rectangle,
+            ObjectKind::Ellipse,
+            ObjectKind::Line,
         ]
         .into_iter()
         .enumerate()
@@ -1194,28 +1372,84 @@ impl Studio {
                     .on_click(cx.listener(move |s, _, w, cx| s.add(kind, w, cx))),
             );
         }
+        content = content.child(tools).child(
+            Button::new("add-image")
+                .small()
+                .icon(IconName::Plus)
+                .label(self.t("图片…", "Image…"))
+                .disabled(self.loading)
+                .on_click(cx.listener(|s, _, w, cx| s.pick_file(1, w, cx))),
+        );
         content = content
-            .child(tools)
+            .child(section(self.t("条码 / 二维码", "BARCODES")))
             .child(
-                Button::new("add-image")
-                    .small()
-                    .icon(IconName::Plus)
-                    .label(self.t("图片…", "Image…"))
-                    .disabled(self.loading)
-                    .on_click(cx.listener(|s, _, w, cx| s.pick_file(1, w, cx))),
+                div().grid().grid_cols(2).gap_2().children(
+                    ObjectKind::BARCODES
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, kind)| {
+                            Button::new(("add-barcode", i))
+                                .small()
+                                .label(self.object_name(kind))
+                                .on_click(cx.listener(move |s, _, w, cx| s.add(kind, w, cx)))
+                        }),
+                ),
             )
             .child(section(self.t("对象列表", "LAYERS")));
         if let Some(d) = &self.design {
-            for (i, o) in d.objects.iter().enumerate() {
+            for (i, o) in d.objects.iter().enumerate().rev() {
                 content = content.child(
-                    Button::new(("layer", i))
-                        .ghost()
-                        .small()
-                        .w_full()
-                        .justify_start()
-                        .selected(self.selected == Some(i))
-                        .label(format!("{:02}  {}", i + 1, self.object_name(o.kind)))
-                        .on_click(cx.listener(move |s, _, w, cx| s.select(i, w, cx))),
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .min_w_0()
+                        .child(
+                            Button::new(("layer", i))
+                                .ghost()
+                                .small()
+                                .flex_1()
+                                .min_w_0()
+                                .overflow_hidden()
+                                .justify_start()
+                                .selected(self.selected == Some(i))
+                                .label(if o.style.name.is_empty() {
+                                    format!("{:02}  {}", i + 1, self.object_name(o.kind))
+                                } else {
+                                    o.style.name.clone()
+                                })
+                                .tooltip(self.object_name(o.kind))
+                                .on_click(cx.listener(move |s, _, w, cx| s.select(i, w, cx))),
+                        )
+                        .child(
+                            Button::new(("layer-visible", i))
+                                .small()
+                                .ghost()
+                                .icon(if o.style.visible {
+                                    IconName::Eye
+                                } else {
+                                    IconName::EyeOff
+                                })
+                                .tooltip(self.t("显示 / 隐藏", "Show / hide"))
+                                .on_click(
+                                    cx.listener(move |s, _, w, cx| s.layer_flag(i, false, w, cx)),
+                                ),
+                        )
+                        .child(
+                            Button::new(("layer-lock", i))
+                                .small()
+                                .ghost()
+                                .label(if o.style.locked {
+                                    self.t("解锁", "Unlock")
+                                } else {
+                                    self.t("锁定", "Lock")
+                                })
+                                .selected(o.style.locked)
+                                .tooltip(self.t("锁定 / 解锁", "Lock / unlock"))
+                                .on_click(
+                                    cx.listener(move |s, _, w, cx| s.layer_flag(i, true, w, cx)),
+                                ),
+                        ),
                 );
             }
         }
@@ -1265,23 +1499,29 @@ impl Studio {
                 .shadow_md()
                 .child(img(image.clone()).size_full());
             if let Some(d) = &self.design {
-                for (i, o) in d.objects.iter().enumerate() {
+                for (i, o) in d
+                    .objects
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, o)| o.style.visible)
+                {
+                    let (object_width, object_height) = o.bounds_size();
                     canvas = canvas.child(
                         div()
                             .id(("canvas-object", i))
                             .absolute()
                             .left(px(o.x as f32 * scale))
                             .top(px(o.y as f32 * scale))
-                            .w(px(o.width as f32 * scale))
-                            .h(px(o.height as f32 * scale))
-                            .cursor_move()
+                            .w(px(object_width as f32 * scale))
+                            .h(px(object_height as f32 * scale))
+                            .when(!o.style.locked, |d| d.cursor_move())
                             .border_1()
                             .border_color(if self.selected == Some(i) {
                                 rgba(0x315efbff)
                             } else {
                                 rgba(0x315efb00)
                             })
-                            .when(self.selected == Some(i), |d| {
+                            .when(self.selected == Some(i) && !o.style.locked, |d| {
                                 d.child(
                                     div()
                                         .absolute()
@@ -1300,27 +1540,21 @@ impl Studio {
                                         .right(px(-3.))
                                         .bg(rgb(0xffffff))
                                         .border_1()
-                                        .border_color(rgb(ACCENT)),
+                                        .border_color(rgb(ACCENT))
+                                        .cursor_crosshair()
+                                        .on_mouse_down(
+                                            MouseButton::Left,
+                                            cx.listener(move |s, e: &MouseDownEvent, w, cx| {
+                                                s.begin_drag(i, e.position, true, w, cx);
+                                                cx.stop_propagation();
+                                            }),
+                                        ),
                                 )
                             })
                             .on_mouse_down(
                                 MouseButton::Left,
                                 cx.listener(move |s, e: &MouseDownEvent, w, cx| {
-                                    if let Err(e) = s.apply_fields(cx) {
-                                        s.fail(e, cx);
-                                        return;
-                                    }
-                                    s.select(i, w, cx);
-                                    s.focus.focus(w);
-                                    if s.selected != Some(i) {
-                                        return;
-                                    }
-                                    s.remember();
-                                    if let Some(o) =
-                                        s.design.as_ref().and_then(|d| d.objects.get(i))
-                                    {
-                                        s.drag = Some((e.position, o.x, o.y));
-                                    }
+                                    s.begin_drag(i, e.position, false, w, cx);
                                     cx.stop_propagation();
                                 }),
                             ),
@@ -1329,17 +1563,31 @@ impl Studio {
             }
             canvas = canvas
                 .on_mouse_move(cx.listener(move |s, e: &MouseMoveEvent, w, cx| {
-                    if let Some((start, x, y)) = s.drag {
+                    if let Some(drag) = s.drag {
                         if e.pressed_button != Some(MouseButton::Left) {
                             s.finish_drag(w, cx);
                             return;
                         }
                         if let (Some(d), Some(i)) = (&mut s.design, s.selected) {
                             let o = &mut d.objects[i];
-                            o.x = (x + f64::from(f32::from(e.position.x - start.x) / scale))
-                                .clamp(0., (d.width_mm - o.width).max(0.));
-                            o.y = (y + f64::from(f32::from(e.position.y - start.y) / scale))
-                                .clamp(0., (d.height_mm - o.height).max(0.));
+                            let dx = f64::from(f32::from(e.position.x - drag.origin.x) / scale);
+                            let dy = f64::from(f32::from(e.position.y - drag.origin.y) / scale);
+                            if drag.resize {
+                                let width = (drag.width + dx).clamp(1., (d.width_mm - o.x).max(1.));
+                                let height =
+                                    (drag.height + dy).clamp(1., (d.height_mm - o.y).max(1.));
+                                (o.width, o.height) = if matches!(o.style.rotation, 90 | 270) {
+                                    (height, width)
+                                } else {
+                                    (width, height)
+                                };
+                                o.stroke_mm = o.stroke_mm.min(o.width.min(o.height));
+                                o.style.corner_radius_mm =
+                                    o.style.corner_radius_mm.min(o.width.min(o.height) / 2.);
+                            } else {
+                                o.x = (drag.x + dx).clamp(0., (d.width_mm - drag.width).max(0.));
+                                o.y = (drag.y + dy).clamp(0., (d.height_mm - drag.height).max(0.));
+                            }
                             s.changed(cx);
                         }
                     }
@@ -1395,7 +1643,7 @@ impl Render for Studio {
         let short = height < 500.;
         let wide = width >= 1000.;
         let inspector_width = 260.;
-        let layers_width = 168.;
+        let layers_width = 224.;
         let sidebar = if width >= 1000. { 188. } else { 56. };
         let canvas_width = width
             - sidebar
@@ -1834,6 +2082,29 @@ impl Render for Studio {
                     s.focus.focus(w);
                     cx.stop_propagation();
                     cx.notify();
+                }
+                if s.focus.is_focused(w)
+                    && s.design.is_some()
+                    && s.selected.is_some()
+                    && !e.keystroke.modifiers.control
+                    && !e.keystroke.modifiers.platform
+                    && !e.keystroke.modifiers.alt
+                {
+                    let step = if e.keystroke.modifiers.shift { 1. } else { 0.1 };
+                    let direction = match e.keystroke.key.as_str() {
+                        "left" => Some((-step, 0.)),
+                        "right" => Some((step, 0.)),
+                        "up" => Some((0., -step)),
+                        "down" => Some((0., step)),
+                        _ => None,
+                    };
+                    if let Some((dx, dy)) = direction {
+                        s.nudge(dx, dy, w, cx);
+                        cx.stop_propagation();
+                    } else if matches!(e.keystroke.key.as_str(), "backspace" | "delete") {
+                        s.delete(w, cx);
+                        cx.stop_propagation();
+                    }
                 }
             }))
             .size_full()

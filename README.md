@@ -6,7 +6,7 @@
 
 [![Build and package](https://github.com/GOODBOY008/labelize-printer/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/GOODBOY008/labelize-printer/actions/workflows/build.yml)
 
-[Download](https://github.com/GOODBOY008/labelize-printer/releases) · [Development guide](DEVELOPMENT.md) · [Architecture](ARCHITECTURE.md) · [Report an issue](https://github.com/GOODBOY008/labelize-printer/issues)
+[Download](https://github.com/GOODBOY008/labelize-printer/releases) · [Designer guide](DESIGNER.md) · [Development guide](DEVELOPMENT.md) · [Architecture](ARCHITECTURE.md) · [Report an issue](https://github.com/GOODBOY008/labelize-printer/issues)
 
 Labelize Printer is a desktop label workspace and local virtual printer for Windows, macOS, and Linux, built with Rust and GPUI. Select **Labelize Printer** in your system print dialog to save a job as one multipage PDF or one PNG per page. A background service keeps processing jobs after you close the window. Label processing runs locally, without a cloud service. Optional software-update checks contact GitHub.
 
@@ -22,6 +22,7 @@ It uses the [Labelize rendering engine](https://github.com/GOODBOY008/labelize) 
 | Job management | Choose an output folder, inspect results, open saved files, and retry failed jobs. | v0.1.2 |
 | Label files | Open ZPL, EPL, TSPL/TSC, CPCL, or DPL; edit supported text files and preview each page. | v0.2.0 |
 | Visual design | Add text, Code 128, QR codes, rectangles, and images; move objects and edit their dimensions. | v0.2.0 |
+| Extended designer | Ten barcode formats, lines and ellipses, text layout, rotation, image fitting, fills, and layer controls. | Current source (unreleased) |
 | Multi-tab workspace | Independent edits, automatic previews, recent files, and local session/draft recovery. | v0.3.0 |
 | Software updates | Stable-release checks, verified full installers, and package-manager-aware handoff. | Current source (unreleased) |
 | Portable templates | Save editable `.labelize.json` templates with embedded images and imported fonts. | v0.2.0 |
@@ -82,7 +83,9 @@ Choose PDF or PNG and an output folder in the right-hand inspector, then use the
 
 ### Create a design
 
-Choose **New design** to start a template. Add text, Code 128, QR codes, rectangles, or PNG/JPEG images. Select an object on the canvas or in the object list, drag it to move, and edit its position and size in millimetres. Property edits update the preview automatically. Duplicate or delete the selected object, and use **Undo** and **Redo** to restore design changes. Each tab keeps its own design history.
+Choose **New design** to start a template. Select an object on the canvas or in the object list, drag it to move, and edit its position and size in millimetres. Property edits update the preview automatically. Duplicate or delete the selected object, and use **Undo** and **Redo** to restore design changes. Each tab keeps its own design history.
+
+The **unreleased source** expands the designer to 15 object types: text, rectangles, ellipses, lines, images, and ten barcode formats. The inspector offers rotation, text wrapping and alignment, fills and rounded corners, image fitting, barcode parameters, and layer naming, visibility, locking, and order. A bottom-right handle resizes the selected object; arrow keys move it precisely when the canvas has focus. See the [designer guide](DESIGNER.md) for the full property list and a sample template. Released v0.3.0 has the original text, Code 128, QR, rectangle, and image tools.
 
 **Save** writes back to the source file, asking for a path only for an untitled document. **Save as** is in the overflow menu. A design is saved as a portable `.labelize.json` template containing its objects, images, and imported font. Reopen the file to continue editing. For Chinese or other text outside the default font's coverage, import a compatible TrueType/OpenType font of up to 32 MiB. Missing glyphs, overflowing text, and undersized barcodes produce errors. Images are composited over white and rendered in monochrome.
 
@@ -94,6 +97,9 @@ Existing printer-language files remain source documents; they are not reconstruc
 | Cmd/Ctrl+N | Create a design |
 | Cmd/Ctrl+S / Cmd/Ctrl+Shift+S | Save / Save as |
 | Cmd/Ctrl+E | Export the active document |
+| Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z | Undo / redo design changes outside text inputs (unreleased) |
+| Arrow / Shift+Arrow | Move the selected object 0.1 / 1 mm with canvas focus (unreleased) |
+| Delete / Backspace | Delete the selected unlocked object with canvas focus (unreleased) |
 | Cmd/Ctrl+W | Close the active tab |
 | Ctrl+Tab / Ctrl+Shift+Tab | Next / previous document |
 | Cmd/Ctrl+1 / 2 / 3 | Workspace / Recent files / Jobs |

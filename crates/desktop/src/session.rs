@@ -16,6 +16,9 @@ use std::{
     sync::Mutex,
 };
 
+/// First nine fields retain their version-1 order for existing local drafts.
+pub const DESIGN_FIELD_COUNT: usize = 17;
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Draft {
     pub id: String,
@@ -269,7 +272,7 @@ impl SessionStore {
                         .is_some_and(|d| index < d.objects.len())
                 });
                 ensure!(
-                    draft.fields.is_empty() || draft.fields.len() == 9,
+                    [0, 9, DESIGN_FIELD_COUNT].contains(&draft.fields.len()),
                     "Invalid draft fields"
                 );
                 draft.zoom = draft
@@ -297,6 +300,40 @@ impl SessionStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn restores_extended_design_properties_and_unfinished_numeric_fields() {
+        use labelize_printer_core::design::*;
+        let temp = tempfile::tempdir().unwrap();
+        let store = SessionStore::new(temp.path().into());
+        let mut draft = Draft::new(Settings::default());
+        let mut code = DesignObject::new(ObjectKind::DataMatrix);
+        code.style.name = "零件编号".into();
+        code.style.rotation = 90;
+        code.style.matrix_shape = MatrixShape::Rectangle;
+        code.style.visible = false;
+        code.style.locked = true;
+        code.style.module_mm = 0.5;
+        draft.design.as_mut().unwrap().objects.push(code);
+        draft.selected = Some(1);
+        draft.fields = vec![String::new(); DESIGN_FIELD_COUNT];
+        draft.fields[12] = "-".into();
+        store
+            .save(
+                1,
+                Workspace {
+                    active: Some(draft.id.clone()),
+                    tabs: vec![draft.clone()],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let (restored, warnings) = store.load();
+        assert!(warnings.is_empty());
+        assert_eq!(restored.tabs[0].design, draft.design);
+        assert_eq!(restored.tabs[0].selected, Some(1));
+        assert_eq!(restored.tabs[0].fields[12], "-");
+        assert!(restored.tabs[0].dirty);
+    }
     #[test]
     fn restores_invalid_edits_binary_data_and_independent_tab_settings() {
         let temp = tempfile::tempdir().unwrap();

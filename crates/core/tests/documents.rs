@@ -219,7 +219,7 @@ fn portable_design_roundtrips_with_embedded_assets_and_pdf_dimensions() {
 #[test]
 fn design_validation_rejects_unknown_versions_bad_geometry_and_missing_glyphs() {
     let mut design = DesignDocument {
-        version: 2,
+        version: 999,
         ..Default::default()
     };
     assert!(design.to_label(8).is_err());

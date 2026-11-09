@@ -26,6 +26,7 @@ labelize = { path = "../../vendor/labelize", default-features = false }
 
 [dev-dependencies]
 tempfile.workspace = true
+rxing = { version = "0.9", default-features = false, features = ["decoders", "oned", "qrcode", "datamatrix", "pdf417", "aztec", "encoding_rs"] }
 
 [target.'cfg(windows)'.dependencies]
 widestring = "1"

@@ -3563,6 +3563,7 @@ dependencies = [
  "lopdf",
  "png 0.18.1",
  "rusqlite",
+ "rxing",
  "serde",
  "serde_json",
  "tempfile",
@@ -5673,8 +5674,19 @@ dependencies = [
  "num",
  "once_cell",
  "regex",
+ "rxing-one-d-proc-derive",
  "thiserror 2.0.21",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "rxing-one-d-proc-derive"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ee3a551320da932c705835119f5f9a69a144966d18780d35e3b394585c22ce3"
+dependencies = [
+ "quote",
+ "syn 3.0.9",
 ]
 
 [[package]]

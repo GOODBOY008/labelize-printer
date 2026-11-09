@@ -16,8 +16,9 @@ use labelize_printer_core::AppPaths;
 #[cfg(target_os = "linux")]
 use std::time::Duration;
 use ui::{
-    CloseLabel, ExportLabel, NewLabel, NextLabel, OpenLabel, PreviousLabel, PrinterApp, SaveLabel,
-    SaveLabelAs, ScrollPageDown, ScrollPageUp, ShowJobs, ShowRecent, ShowSettings, ShowStudio,
+    CloseLabel, ExportLabel, NewLabel, NextLabel, OpenLabel, PreviousLabel, PrinterApp, RedoLabel,
+    SaveLabel, SaveLabelAs, ScrollPageDown, ScrollPageUp, ShowJobs, ShowRecent, ShowSettings,
+    ShowStudio, UndoLabel,
 };
 
 actions!(labelize_printer, [Quit]);
@@ -133,6 +134,16 @@ fn main() -> anyhow::Result<()> {
             ),
             KeyBinding::new("ctrl-tab", NextLabel, Some("LabelizePrinter")),
             KeyBinding::new("ctrl-shift-tab", PreviousLabel, Some("LabelizePrinter")),
+            KeyBinding::new(
+                &format!("{modifier}-z"),
+                UndoLabel,
+                Some("LabelizePrinter && !Input"),
+            ),
+            KeyBinding::new(
+                &format!("{modifier}-shift-z"),
+                RedoLabel,
+                Some("LabelizePrinter && !Input"),
+            ),
             KeyBinding::new(
                 &format!("{modifier}-,"),
                 ShowSettings,

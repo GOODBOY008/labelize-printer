@@ -99,7 +99,9 @@ cargo test -p labelize-printer --lib --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 ```
 
-The desktop library tests cover draft recovery, write failures, source conflicts, stale preview callbacks, cancellation/priority scheduling, and preview-cache reuse, revision isolation, cancellation, and byte-budget eviction without a GPU. These run in each package CI job. The core tests cover job persistence, output commits, raster metadata, file-language previews, and portable designs. Consult the [acceptance record](ACCEPTANCE.md) for what has actually been run on each platform.
+The desktop library tests cover draft recovery (including extended styles and incomplete property input), write failures, source conflicts, stale preview callbacks, cancellation/priority scheduling, and preview-cache reuse, revision isolation, cancellation, and byte-budget eviction without a GPU. These run in each package CI job. The core tests cover job persistence, output commits, raster metadata, file-language previews, and portable designs. Consult the [acceptance record](ACCEPTANCE.md) for what has actually been run on each platform.
+
+`cargo test -p labelize-printer-core --test designer --locked` exercises all ten barcode formats through an independent decoder at 8/12 dots/mm and four rotations (80 combinations). It also checks style-dependent pixels, strict barcode validation, rotated geometry and locking, template serialization, PNG/PDF embedded-pixel equality, and a version-1 fixture captured from the previous implementation. Barcode decoding uses the object rectangle, including its quiet zone and optional caption. See [fixture provenance](crates/core/tests/fixtures/README.md); do not regenerate the compatibility image to conceal a rendering regression.
 
 On a Mac with an available Metal device, the vendored atlas regression exercises repeated eviction and reuse while a neighboring image stays live. It is ignored by default because headless CI runners may not expose a GPU. Runtime shader compilation avoids requiring the optional offline Metal toolchain:
 

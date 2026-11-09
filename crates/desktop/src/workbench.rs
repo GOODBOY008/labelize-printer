@@ -463,6 +463,11 @@ impl Workbench {
             t.update(cx, |s, cx| s.export(window, cx));
         }
     }
+    pub fn history(&mut self, redo: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(tab) = self.active_tab(cx) {
+            tab.update(cx, |s, cx| s.history(redo, window, cx));
+        }
+    }
     pub fn close_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(t) = self.active_tab(cx) {
             t.update(cx, |s, cx| s.request_tab_close(window, cx));

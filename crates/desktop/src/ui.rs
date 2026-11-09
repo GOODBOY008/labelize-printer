@@ -32,6 +32,8 @@ actions!(
         CloseLabel,
         NextLabel,
         PreviousLabel,
+        UndoLabel,
+        RedoLabel,
         ShowRecent,
         ShowSetup,
         ShowSettings,
@@ -1623,6 +1625,16 @@ impl Render for PrinterApp {
             }))
             .on_action(cx.listener(|s, _: &PreviousLabel, w, cx| {
                 s.studio.update(cx, |s, cx| s.cycle_tab(true, w, cx));
+            }))
+            .on_action(cx.listener(|s, _: &UndoLabel, w, cx| {
+                if s.page == Page::Studio {
+                    s.studio.update(cx, |s, cx| s.history(false, w, cx));
+                }
+            }))
+            .on_action(cx.listener(|s, _: &RedoLabel, w, cx| {
+                if s.page == Page::Studio {
+                    s.studio.update(cx, |s, cx| s.history(true, w, cx));
+                }
             }))
             .on_action(cx.listener(|s, _: &ShowSetup, w, cx| s.change_page(Page::Setup, w, cx)))
             .on_action(
