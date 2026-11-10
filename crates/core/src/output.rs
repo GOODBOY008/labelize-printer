@@ -77,20 +77,18 @@ pub fn render_job(paths: &AppPaths, job: &JobRecord) -> Result<OutputReceipt> {
                     fs::metadata(&file)?.len() <= MAX_INPUT_BYTES,
                     "ZPL exceeds 64 MiB"
                 );
-                crate::document::render(
+                sink.document(
                     &crate::document::read_input(&file)?,
                     crate::document::DocumentKind::Zpl,
                     &job.settings,
-                    |page| sink.push(page),
                 )?;
             }
             PrintJobInput::LabelFile { file, language } => {
                 let file = job_file(paths, &job.id, file)?;
-                crate::document::render(
+                sink.document(
                     &crate::document::read_input(&file)?,
                     *language,
                     &job.settings,
-                    |page| sink.push(page),
                 )?;
             }
             PrintJobInput::RasterPages { pages } => {
@@ -155,6 +153,7 @@ struct PageSink {
     kids: Vec<Object>,
     files: Vec<PathBuf>,
     count: usize,
+    encoded_pdf: bool,
 }
 
 impl PageSink {
@@ -171,6 +170,25 @@ impl PageSink {
             kids: Vec::new(),
             files: Vec::new(),
             count: 0,
+            encoded_pdf: false,
+        }
+    }
+    fn document(
+        &mut self,
+        bytes: &[u8],
+        kind: crate::document::DocumentKind,
+        settings: &Settings,
+    ) -> Result<()> {
+        if self.format == OutputFormat::Pdf && settings.render_mode == RenderMode::Vector {
+            let (pdf, count) = crate::document::vector_pdf(bytes, kind, settings)?;
+            let name = format!("{}.pdf", self.base);
+            atomic_write(&self.temp_dir.join(&name), &pdf)?;
+            self.files.push(self.final_dir.join(name));
+            self.count = count;
+            self.encoded_pdf = true;
+            Ok(())
+        } else {
+            crate::document::render(bytes, kind, settings, |page| self.push(page))
         }
     }
     fn push(&mut self, page: RenderedPage) -> Result<()> {
@@ -231,7 +249,7 @@ impl PageSink {
     }
     fn finish(mut self, id: &str) -> Result<OutputReceipt> {
         anyhow::ensure!(self.count > 0, "Cannot save an empty print job");
-        if self.format == OutputFormat::Pdf {
+        if self.format == OutputFormat::Pdf && !self.encoded_pdf {
             self.document.objects.insert(
                 self.pages_id,
                 Object::Dictionary(dictionary! {

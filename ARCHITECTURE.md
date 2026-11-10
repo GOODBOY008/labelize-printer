@@ -17,11 +17,11 @@ flowchart TD
   IPP --> J
   IPC --> J
   J -->|Printer-language file| P[Labelize parser]
-  J -->|Design template| D[Design objects to neutral IR]
-  P --> L[Labelize renderer]
-  D --> L
+  J -->|Design template| D[Designer raster or native scene]
+  P --> L[Labelize raster or vector scene]
   J -->|System raster| R[Raster adapter]
   L --> O[Unified PDF or PNG output]
+  D --> O
   R --> O
   O --> SAVE[Atomic file commit, then Saved]
 ```
@@ -37,7 +37,7 @@ flowchart TD
 | `vendor/labelize` | Pinned language parsers, barcode encoders, and renderer. See [provenance](vendor/labelize/PROVENANCE.md). |
 | `platform` / `scripts` | System queues, login services, native builds, icons, and installers. |
 
-Within core, `document` dispatches label files to the appropriate parser and renderer. `design` turns visual objects and Labelize barcode output into language-neutral IR. `output` accepts normalized pages and commits PDF/PNG files. Operating-system integration and job management stay outside the Labelize dependency.
+Within core, `document` dispatches label files to the appropriate parser and renderer. `design` composes visual objects and Labelize barcode output, preserving semantic drawing operations in vector mode. `output` accepts normalized raster pages or encoded native PDF and commits files with the same atomic directory/receipt protocol. Operating-system integration and job management stay outside the Labelize dependency.
 
 ## Input boundaries and copies
 
@@ -102,7 +102,7 @@ ZPL parsing uses `parse_with_options` to enable declared dimensions, complete-fo
 
 ## Desktop previews and designs
 
-`core::document::render` is shared by preview and export, including page order, dimensions, and canvas limits. The desktop starts the daemon's standalone `preview` subcommand with a 300-second timeout. That process writes PNG pages and page metadata; the desktop decodes display images off the UI thread, serializes decoding, and cancels obsolete page loads. A display image is bounded to 2048 × 2048 pixels without enlarging smaller pages, alongside at most five 120 × 176 thumbnails. Full-resolution preview files remain on disk.
+`core::document::render` is shared by preview and raster/PNG export, including page order, dimensions, and canvas limits. `document::vector_pdf` uses the same settings and parsed labels, retaining native scenes until multipage PDF encoding. The desktop starts the daemon's standalone `preview` subcommand with a 300-second timeout. That process writes PNG pages and page metadata; the desktop decodes display images off the UI thread, serializes decoding, and cancels obsolete page loads. A display image is bounded to 2048 × 2048 pixels without enlarging smaller pages, alongside at most five 120 × 176 thumbnails. Full-resolution preview files remain on disk.
 
 `preview_images` keeps decoded images in a shared 64 MiB CPU LRU cache, keyed by the render's unique temporary directory and page number. Switching back to a cached page displays it synchronously, without reading PNGs or starting a renderer. New revisions and closed documents remove their old entries. Cache misses retain the last successful image and its dimensions until a replacement is ready; the updating indicator overlays the canvas without changing its size. Inactive and closed tabs still evict GPU textures at the next frame boundary, rebuilding that frame to avoid presenting a scene with freed textures. Ancestor notifications are consolidated into the required root invalidation. Temporary preview directories are owned by the desktop and cleaned up when their handles are dropped.
 
@@ -116,7 +116,11 @@ Source files are separate from local drafts. Save checks the digest of the last 
 
 Design format version 2 stores up to 100 objects in `.labelize.json`: geometry in millimetres, text and barcode content, images, an optional imported font, and per-object style. Version 1 templates remain readable with appearance-preserving defaults; saving writes version 2, which older apps cannot open. Images and fonts are embedded as base64 data, without external file dependencies. Undo history is bounded by both entry count and asset size. The desktop draft reader accepts both the old nine-field and new seventeen-field property snapshots, including unfinished numeric input.
 
-`design::symbols` adapts ten existing Labelize barcode encoders to integer-dot modules and bounded quiet zones. `design::render` lays out text and images, draws shapes, rotates each object, and composites visible objects in layer order onto one bounded grayscale canvas. Transparent layers add ink; white and black backgrounds replace the exact object rectangle. Composition occurs before bit packing so byte-alignment padding cannot erase neighboring content. The result enters the existing language-neutral IR and PDF/PNG pipeline as one monochrome graphic. No printer-language round trip or vendored parser changes are involved.
+`design::symbols` adapts ten existing Labelize barcode encoders to integer-dot modules and bounded quiet zones. `design::render` lays out text and images, draws shapes, rotates each object, and composites visible objects in layer order onto one bounded grayscale canvas. Transparent layers add ink; white and black backgrounds replace the exact object rectangle. The default raster path retains the existing monochrome graphic/IR representation; antialiased raster output retains grayscale before bit packing. No printer-language round trip or vendored parser changes are involved.
+
+`design::scene` shares text wrapping, alignment and barcode module layout with the raster backend. Its text, shape and module paths feed both tiny-skia PNG rendering and krilla PDF encoding. PDF embeds font subsets and Unicode mappings; imported images remain bitmap objects. Per-object transforms, clipping and background operations retain layer order and quarter-turn rotations. Printer-language vector scenes come from Labelize's existing optional `vector` feature.
+
+`Settings` adds backward-compatible defaults for `render_mode` (raster), `antialias` (false), and `png_scale` (1). These fields travel in immutable job snapshots and per-tab drafts. Raster mode ignores pixel scale; vector PNG permits 1–4× rendering, updating resolution metadata without changing physical dimensions. PDF never applies PNG scale. The scaled canvas is checked against the existing pixel limits before allocation. Render-setting edits increment the document revision and cancel obsolete previews without setting the source-file dirty flag. IPP raster pages bypass these controls and retain their received samples and resolution.
 
 Missing font glyphs, overflowing text, invalid geometry or barcode data, and symbols that cannot fit are rejected. Preview and export apply the same rules; hidden objects are omitted from both. Locking is an editor constraint and does not suppress output. Rotation is clockwise in quarter turns; stored width/height are unrotated, while placement and label alignment use the rotated bounds. See [Designer](DESIGNER.md) for properties and input constraints. Importing printer-language source does not reconstruct visual objects.
 

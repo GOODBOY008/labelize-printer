@@ -1,6 +1,6 @@
 # Labelize Studio
 
-<img src="platform/icon.svg" width="72" height="72" align="right" alt="Labelize Studio icon">
+<img src="platform/icon.png" width="80" height="80" align="right" alt="Labelize Studio — folded label L logo">
 
 **Design labels. Preview printer code. Export PDF or PNG.**
 
@@ -25,6 +25,7 @@ Built with **Rust + GPUI**, the desktop app uses the [Labelize engine](https://g
 | Label files | Open ZPL, EPL, TSPL/TSC, CPCL, or DPL; edit supported text files and preview each page. | v0.2.0 |
 | Multi-tab workspace | Independent edits, automatic previews, recent files, and local session/draft recovery. | v0.3.0 |
 | PDF/PNG export | Save all pages as one raster PDF or one PNG per page. | v0.2.0 |
+| Rendering quality | Optional antialiasing, native vector PDF, and 1–4× PNG rendering from a vector scene. | Unreleased |
 | Portable templates | Save editable `.labelize.json` templates with embedded images and imported fonts. | v0.2.0 |
 | Virtual printer | Select a local system printer and capture jobs as PDF or PNG while the desktop window is closed. | v0.1.2 |
 | Job management | Choose an output folder, inspect results, open saved files, and retry failed jobs. | v0.1.2 |
@@ -95,6 +96,16 @@ Each file opens in its own tab; opening the same path again selects the existing
 
 Choose PDF or PNG and an output folder in the right-hand inspector, then use the single **Export PDF/PNG** button. PDF combines all pages; PNG writes one image per page. These choices belong to the current tab and do not change system-queue defaults. Export captures the content and options at the time of submission. Once accepted, the job continues in the background while you edit or close the tab; **Jobs** reports success only after the files are committed.
 
+### Rendering quality (unreleased)
+
+The inspector's **Export → Rendering** controls apply to printer-language files and visual designs:
+
+- **Raster** keeps the existing rendering behavior. **Antialias** retains gray edge pixels in PNG and raster PDF; it is off by default for black-and-white output.
+- **Vector** keeps supported text, shapes, and barcode geometry in PDF. Text remains searchable; imported bitmaps and engine fallback content keep their original raster detail.
+- With **Vector + PNG**, choose a **1×–4× pixel scale**. PNG is still a bitmap; the scene is rendered at the requested resolution, with matching resolution metadata so the physical label size does not change. Antialias applies to PNG and previews; a PDF viewer handles native vector edges itself.
+
+Each tab restores these options with its draft. Changing them refreshes the preview without marking the source file as edited. **Settings → Output defaults** provides defaults for new tabs and incoming printer-language jobs. System raster jobs retain their original pixels, size, and resolution regardless of these options. Scaled PNG output still obeys the 16 Mi pixel / 32,000-pixel-per-axis limits.
+
 ### Create a design
 
 Choose **New design** to start a template. Select an object on the canvas or in the object list, drag it to move, and edit its position and size in millimetres. Property edits update the preview automatically. Duplicate or delete the selected object, and use **Undo** and **Redo** to restore design changes. Each tab keeps its own design history.
@@ -128,7 +139,7 @@ The interface uses a compact sidebar below 1000 logical pixels and an inspector 
 | Input | Processing | Output |
 | --- | --- | --- |
 | Label file | Labelize language parser → renderer | Preview, PDF, or PNG |
-| Design template | Compose styled objects → language-neutral graphic → Labelize renderer | Preview, PDF, or PNG |
+| Design template | Compose styled objects as raster, or retain text, shapes, and barcode paths in a vector scene | Preview, PDF, or PNG |
 | Windows system print job | ZDesigner generates ZPL → local RAW receiver → Labelize | PDF or PNG |
 | macOS/Linux system print job | System generates PWG/Apple Raster → PAPPL → raster adapter | PDF or PNG |
 
@@ -142,6 +153,6 @@ See [Architecture](ARCHITECTURE.md) for component responsibilities, task boundar
 - [Acceptance record](ACCEPTANCE.md): automated checks, native desktop evidence, and outstanding platform tests.
 - [GitHub Issues](https://github.com/GOODBOY008/labelize-studio/issues): include your OS and architecture, version or commit, input route, expected result, and diagnostic message. Attach a minimal label sample with private data removed when possible.
 
-The current scope is one user, one computer, and one local queue. Jobs must be self-contained; printer resources are not shared between jobs. Network sharing, multiple-user queues, and vector PDF output are outside the current scope.
+The current scope is one user, one computer, and one local queue. Jobs must be self-contained; printer resources are not shared between jobs. Network sharing and multiple-user queues are outside the current scope.
 
 Released under the [MIT license](LICENSE). See [Third-party notices](THIRD_PARTY_NOTICES.md) for bundled dependencies and assets.

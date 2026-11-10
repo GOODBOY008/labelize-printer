@@ -344,6 +344,9 @@ mod tests {
         a.page = 3;
         let mut b = Draft::new(Settings::default());
         b.options.dpmm = 12;
+        b.options.render_mode = labelize_printer_core::RenderMode::Vector;
+        b.options.antialias = true;
+        b.options.png_scale = 3;
         b.zoom = Some(1.25);
         b.dirty = false;
         store
@@ -364,6 +367,8 @@ mod tests {
         assert!(loaded.tabs[0].dirty);
         assert_eq!(loaded.tabs[0].page, 3);
         assert_eq!(loaded.tabs[1].options.dpmm, 12);
+        assert_eq!(loaded.tabs[0].options, a.options);
+        assert_eq!(loaded.tabs[1].options, b.options);
         assert_eq!(loaded.tabs[1].zoom, Some(1.25));
     }
     #[test]

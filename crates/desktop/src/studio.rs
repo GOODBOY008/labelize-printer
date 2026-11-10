@@ -22,7 +22,7 @@ use labelize_printer_core::{
     },
     document::{self, DocumentKind},
     paths::atomic_write,
-    AppPaths, OutputFormat, Settings,
+    AppPaths, OutputFormat, RenderMode, Settings,
 };
 use std::{
     path::PathBuf,
@@ -298,6 +298,11 @@ impl Studio {
     }
     fn changed(&mut self, cx: &mut Context<Self>) {
         self.dirty = true;
+        self.render_options_changed(cx);
+    }
+    // Output preferences live in the session, not in the source file. Changing
+    // them invalidates the preview without creating a false unsaved-file prompt.
+    fn render_options_changed(&mut self, cx: &mut Context<Self>) {
         self.stale = true;
         self.revision += 1;
         self.persist_version += 1;
@@ -1288,13 +1293,22 @@ impl Studio {
                                 .label(label)
                                 .selected(self.options.format == format)
                                 .on_click(cx.listener(move |s, _, _, cx| {
+                                    if s.options.format == format {
+                                        return;
+                                    }
+                                    let scale = s.options.output_scale();
                                     s.options.format = format;
-                                    s.persist_version += 1;
-                                    cx.notify();
+                                    if s.options.output_scale() != scale {
+                                        s.render_options_changed(cx);
+                                    } else {
+                                        s.persist_version += 1;
+                                        cx.notify();
+                                    }
                                 }))
                         }),
                 ),
             )
+            .child(self.render_controls(cx))
             .child(div().text_xs().text_color(rgb(MUTED)).child(
                 if self.options.format == OutputFormat::Pdf {
                     self.t("全部页面合并为一个 PDF", "All pages in one PDF")
@@ -1347,6 +1361,87 @@ impl Studio {
             .overflow_y_scroll()
             .child(content)
             .into_any_element()
+    }
+
+    fn render_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        use crate::i18n::Text;
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .min_w_0()
+            .child(section(self.language.text(Text::RenderMode)))
+            .child(
+                row().children(
+                    [
+                        (RenderMode::Raster, Text::RasterMode),
+                        (RenderMode::Vector, Text::VectorMode),
+                    ]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, (mode, label))| {
+                        Button::new(("document-render-mode", i))
+                            .small()
+                            .flex_1()
+                            .label(self.language.text(label))
+                            .selected(self.options.render_mode == mode)
+                            .on_click(cx.listener(move |s, _, _, cx| {
+                                if s.options.render_mode != mode {
+                                    s.options.render_mode = mode;
+                                    s.render_options_changed(cx);
+                                }
+                            }))
+                    }),
+                ),
+            )
+            .child(
+                Button::new("document-antialias")
+                    .small()
+                    .label(self.language.text(if self.options.antialias {
+                        Text::AntialiasOn
+                    } else {
+                        Text::AntialiasOff
+                    }))
+                    .selected(self.options.antialias)
+                    .on_click(cx.listener(|s, _, _, cx| {
+                        s.options.antialias = !s.options.antialias;
+                        s.render_options_changed(cx);
+                    })),
+            )
+            .when(
+                self.options.render_mode == RenderMode::Vector
+                    && self.options.format == OutputFormat::Png,
+                |panel| {
+                    panel
+                        .child(section(self.language.text(Text::PngScale)))
+                        .child(row().children((1..=4u32).map(|scale| {
+                            Button::new(("document-png-scale", scale as usize))
+                                .small()
+                                .flex_1()
+                                .label(format!("{scale}×"))
+                                .selected(self.options.png_scale == scale)
+                                .on_click(cx.listener(move |s, _, _, cx| {
+                                    if s.options.png_scale != scale {
+                                        s.options.png_scale = scale;
+                                        s.render_options_changed(cx);
+                                    }
+                                }))
+                        })))
+                },
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(rgb(MUTED))
+                    .child(
+                        self.language
+                            .text(if self.options.render_mode == RenderMode::Vector {
+                                Text::VectorDescription
+                            } else {
+                                Text::AntialiasDescription
+                            }),
+                    ),
+            )
     }
     fn layers(&self, cx: &mut Context<Self>) -> AnyElement {
         let mut content = div()

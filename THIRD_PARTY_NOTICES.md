@@ -1,7 +1,10 @@
 # Third-party notices
 
-Labelize Printer uses Labelize (MIT), GPUI, gpui-component and gpui-component-assets (Apache-2.0),
+Labelize Studio uses Labelize (MIT), GPUI, gpui-component and gpui-component-assets (Apache-2.0),
 PAPPL 1.4.12 (Apache-2.0 with LLVM exception), and OpenSSL 3.5.9 (Apache-2.0).
+Native vector PDF uses krilla (MIT / Apache-2.0); scene rasterization uses
+tiny-skia (BSD-3-Clause). Their dependencies and notices are included by the
+same license collection step used for every package.
 Native packages link CUPS and operating-system frameworks as system libraries.
 The native build patches PAPPL to preserve client raster headers and accept
 sRGB input for grayscale conversion. See [the native build script](scripts/build-native.sh).

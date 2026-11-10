@@ -4,6 +4,21 @@ Updated 2026-11-10. [README](README.md) · [Development guide](DEVELOPMENT.md) �
 
 This record separates builds, automated protocol checks, system printing, and native desktop acceptance. Cross-compilation, a configured CI job, or a container test does not establish desktop compatibility on the corresponding target platform. Results below identify the version or development milestone to which they apply.
 
+## Antialias and vector output (unreleased source)
+
+Verified locally on 2026-11-10 against the development tree based on v0.4.0 (`d8e2232`). These changes enable Labelize's existing vector feature and add a native designer scene; vendored parser and renderer sources are unchanged. Existing settings retain raster output with antialiasing off and PNG scale 1.
+
+| Check | Evidence and result |
+| --- | --- |
+| Automated regression | All 29 core tests and 15 desktop library tests passed. Coverage includes legacy settings, per-tab restoration, grayscale raster PDF, native PDF fonts/text/paths, mixed media and copies, fractional dimensions, PNG scale/resolution metadata, preview/export equality, atomic recovery/failure, and IPP raster bypass. All ten designer barcode formats preserve the original modules at 8/12 dpmm and decode after rotation and scaled rendering. |
+| Independent PDF verification | PDFium whole-string search and PDFium/Poppler Unicode extraction passed for ZPL, the designer showcase, and a design with an imported Chinese font. Native text/font/path operations were inspected; a raster PDF negative control was not searchable. PDFium renders and scene PNGs had matching dimensions at 1×/3×, with mean absolute normalized pixel differences below 0.003. QR, DataMatrix, EAN-13 and Code 128 decoded from the rendered PDFs. |
+| Real background processing | The complete local daemon smoke suite passed, including native vector PDF with copies, scaled antialiased ZPL/design PNG, five printer languages, RAW boundaries, worker failure/retry, restart, PWG/Apple Raster and port conflicts. |
+| Native desktop | On the current macOS Apple Silicon host, checked English/Chinese controls at 1000×720 and the properties drawer at 480×360. Switched rendering modes and antialiasing, exported a three-page ZPL PNG job, a native designer PDF and a 2× designer PNG. All jobs reached Saved with matching files. Restart restored each tab's independent options without marking clean source files modified. Global defaults were saved independently. |
+| Build and lint | Native macOS ARM64 workspace build, workspace Clippy, formatting and diff checks passed. Workspace compile checks also passed for macOS Intel, Windows x64 GNU and Debian 12 amd64 in Docker. Existing vendored GPUI/xattr warnings remain; no new workspace lint warnings were introduced. |
+| Release and platform limits | These local checks are separate from the exact-commit [CI build and package results](https://github.com/GOODBOY008/labelize-studio/actions/workflows/build.yml) and do not establish a new release. Windows/Linux native desktop, macOS Intel hardware and physical scanner/printed-label acceptance remain pending. |
+
+Local evidence is retained in `.cache/vector-*.log`, `.cache/vector-qa/report.json` and `.cache/vector-preview/ui-evidence.json`. Representative PDFs, PNGs, inputs and the independent verification script are under `.cache/vector-qa/`. Native UI checks used separate preview bundles and a private data directory under `.cache/vector-preview/`; the installed app, user settings/drafts and `LabelizePrinter` queue were left intact.
+
 ## In-app updates (unreleased source)
 
 Implemented on `codex/in-app-updates`, based on `bff8edf` (v0.3.0). The local packages below use development profiles and retain the workspace's 0.3.0 version; they are QA artifacts, not a newly published release.

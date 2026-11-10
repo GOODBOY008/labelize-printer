@@ -63,6 +63,9 @@ fn raster_preserves_pixels_page_order_and_resolution_without_zpl() {
     let (_temp, paths, store) = setup();
     let mut settings = store.settings().unwrap();
     settings.format = OutputFormat::Png;
+    settings.render_mode = RenderMode::Vector;
+    settings.antialias = true;
+    settings.png_scale = 4;
     store.save_settings(&settings).unwrap();
     let dir = paths.root.join("incoming/raster");
     fs::create_dir(&dir).unwrap();

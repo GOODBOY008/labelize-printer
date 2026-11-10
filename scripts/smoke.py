@@ -89,6 +89,32 @@ with tempfile.TemporaryDirectory(prefix='labelize-smoke-') as temporary:
             assert len(preview_pages) == 1 and preview_pages[0]['width'] > 0
         print('PASS direct EPL/TSPL/CPCL/DPL files and isolated preview workers')
 
+        original_settings = dict(settings)
+        settings.update(render_mode='vector', antialias=True, png_scale=2, format='pdf')
+        config.write_text(json.dumps(settings)); cli('settings', '--file', str(config))
+        native = work / 'vector.zpl'
+        native.write_bytes(b'^XA^PW400^LL240^FO12,12^A0N,32,32^FDVector output^FS^FO12,70^GB160,60,3^FS^PQ2^XZ')
+        saved = cli('submit', str(native), '--wait')
+        assert saved['state'] == 'saved' and saved['page_count'] == 2 and len(saved['output_files']) == 1, saved
+        assert saved['settings']['render_mode'] == 'vector' and saved['settings']['antialias'], saved
+        assert pathlib.Path(saved['output_files'][0]).read_bytes().startswith(b'%PDF-')
+        settings['format'] = 'png'
+        config.write_text(json.dumps(settings)); cli('settings', '--file', str(config))
+        for source, language, expected in [(native, 'zpl', (800, 480)),
+                (root / 'examples/designer-showcase.labelize.json', 'design', (1632, 2432))]:
+            saved = cli('submit', str(source), '--wait')
+            assert saved['state'] == 'saved', saved
+            data = pathlib.Path(saved['output_files'][0]).read_bytes()
+            assert struct.unpack('>II', data[16:24]) == expected
+            preview_request.write_text(json.dumps(dict(input=str(source), kind=language, settings=settings)))
+            preview_dir = work / ('vector-preview-' + language)
+            subprocess.run([str(binary), '--data-dir', str(state), 'preview', '--request', str(preview_request), '--output', str(preview_dir)], check=True, timeout=60)
+            page = json.loads((preview_dir / 'pages.json').read_text())[0]
+            assert (page['width'], page['height']) == expected
+        settings = original_settings
+        config.write_text(json.dumps(settings)); cli('settings', '--file', str(config))
+        print('PASS vector PDF copies, per-job render settings, scaled antialiased ZPL/design PNG and preview workers')
+
 
         raw = socket.create_connection(('127.0.0.1', settings['raw_port']))
         for chunk in [b'^XA^PW400^LL240', b'^FO0,0^FDfirst^FS^PQ2', b'^XZ']:

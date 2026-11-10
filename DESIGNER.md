@@ -47,4 +47,12 @@ EAN-13, EAN-8, and UPC-A accept the full number or the body without its final ch
 
 Templates embed images and the document font and remain self-contained. The expanded designer reads version 1 and version 2 templates; saving writes version 2. Earlier app versions cannot read version 2, so keep a copy of a version-1 file if you need to reopen it with an older app. Existing version-1 defaults preserve their previous rendered appearance.
 
-PDF combines the document pages into one raster PDF; PNG saves one image per page. Exports capture the content and options when submitted and continue in the background after a tab or window closes. Designs do not export printer-language commands, and opening a ZPL/EPL/TSPL/CPCL/DPL file keeps it as a source document rather than reconstructing design objects.
+PDF combines the document pages into one file; PNG saves one image per page. Exports capture the content and options when submitted and continue in the background after a tab or window closes. Designs do not export printer-language commands, and opening a ZPL/EPL/TSPL/CPCL/DPL file keeps it as a source document rather than reconstructing design objects.
+
+## Rendering quality (unreleased)
+
+In **Export → Rendering**, choose **Raster** for the existing output or **Vector** to retain native text, shape outlines and barcode modules in PDF. Imported bitmap images remain images. Both modes preserve object order, backgrounds, clipping, quarter-turn rotations and physical label dimensions.
+
+**Antialias** retains gray edge pixels in previews and PNG output, and in raster PDF. It is off by default. Vector PDF stores geometry; its edge smoothing is determined by the viewer. Vector PNG offers **1×–4×** resolution without changing the label's physical size. It is a bitmap rendered from the scene, not a vector file.
+
+Rendering choices belong to the tab's local session and export snapshot, rather than the portable template format. They survive tab/session restoration and do not mark the source file as modified. Existing templates and settings keep the original black-and-white raster defaults.

@@ -2,6 +2,17 @@ use super::*;
 use ab_glyph::{Font, FontRef, PxScale};
 use image::imageops::{self, FilterType};
 
+// Match Labelize's outer canvas rounding, including floating-point dot values
+// that are a few ULPs above an integer. Object layout still snaps to whole dots.
+pub(super) fn canvas_extent(mm: f64, dpmm: i32) -> u32 {
+    let dots = mm * dpmm as f64;
+    if (dots - dots.round()).abs() <= dots.abs() * f64::EPSILON * 4. {
+        dots.round() as u32
+    } else {
+        dots.ceil() as u32
+    }
+}
+
 pub(super) fn document(design: &DesignDocument, dpmm: i32) -> Result<GrayImage> {
     let mut canvas = GrayImage::from_pixel(
         (design.width_mm * dpmm as f64).round() as u32,
@@ -46,17 +57,25 @@ pub(super) fn document(design: &DesignDocument, dpmm: i32) -> Result<GrayImage> 
 }
 
 pub(super) fn font(design: &DesignDocument, face: TextFont) -> Result<FontRef<'_>> {
+    FontRef::try_from_slice(font_bytes(design, face))
+        .context("Invalid font; choose a TrueType/OpenType font")
+}
+
+pub(super) fn font_bytes(design: &DesignDocument, face: TextFont) -> &[u8] {
     use labelize::assets::*;
-    let bytes = match face {
+    match face {
         TextFont::Document if !design.font.is_empty() => &design.font,
         TextFont::Document | TextFont::Monospace => FONT_DEJAVU_SANS_MONO,
         TextFont::BoldMonospace => FONT_DEJAVU_SANS_MONO_BOLD,
         TextFont::CondensedBold => FONT_ZERO_SUBSTITUTE,
-    };
-    FontRef::try_from_slice(bytes).context("Invalid font; choose a TrueType/OpenType font")
+    }
 }
 
-fn object_pixels(o: &DesignObject, design: &DesignDocument, dpmm: i32) -> Result<GrayImage> {
+pub(super) fn object_pixels(
+    o: &DesignObject,
+    design: &DesignDocument,
+    dpmm: i32,
+) -> Result<GrayImage> {
     let w = (o.width * dpmm as f64).round() as u32;
     let h = (o.height * dpmm as f64).round() as u32;
     let mut canvas = GrayImage::from_pixel(w, h, Luma([255]));
@@ -188,6 +207,35 @@ pub(super) fn draw_text(
     font: &FontRef<'_>,
     dpmm: i32,
 ) -> Result<()> {
+    for line in text_lines(canvas.width(), canvas.height(), text, o, font, dpmm)? {
+        imageproc::drawing::draw_text_mut(
+            canvas,
+            Luma([0]),
+            line.x,
+            line.y,
+            PxScale::from((o.font_mm * dpmm as f64) as f32),
+            font,
+            &line.text,
+        );
+    }
+    Ok(())
+}
+
+pub(super) struct TextLine {
+    pub text: String,
+    pub x: i32,
+    pub y: i32,
+}
+
+/// Shared wrapping and alignment for the legacy raster and vector backends.
+pub(super) fn text_lines(
+    width: u32,
+    height: u32,
+    text: &str,
+    o: &DesignObject,
+    font: &FontRef<'_>,
+    dpmm: i32,
+) -> Result<Vec<TextLine>> {
     let scale = PxScale::from((o.font_mm * dpmm as f64) as f32);
     ensure!(
         text.chars()
@@ -205,7 +253,7 @@ pub(super) fn draw_text(
         let mut current = String::new();
         for ch in paragraph.chars() {
             current.push(ch);
-            if measure(&current) <= canvas.width() {
+            if measure(&current) <= width {
                 continue;
             }
             current.pop();
@@ -232,26 +280,23 @@ pub(super) fn draw_text(
         lines.push(current);
     }
     let step = (scale.y as f64 * o.style.line_spacing).ceil() as u32;
-    let height = if lines.is_empty() {
+    let text_height = if lines.is_empty() {
         0
     } else {
         (lines.len() as u32 - 1) * step + scale.y.ceil() as u32
     };
     ensure!(
-        height <= canvas.height() && lines.iter().all(|line| measure(line) <= canvas.width()),
+        text_height <= height && lines.iter().all(|line| measure(line) <= width),
         "Text does not fit; enlarge the object or reduce the font size"
     );
-    let top = vertical((canvas.height() - height) as i64, o.style.vertical);
-    for (i, line) in lines.iter().enumerate() {
-        imageproc::drawing::draw_text_mut(
-            canvas,
-            Luma([0]),
-            horizontal((canvas.width() - measure(line)) as i64, o.style.horizontal) as i32,
-            (top + i as i64 * step as i64) as i32,
-            scale,
-            font,
-            line,
-        );
-    }
-    Ok(())
+    let top = vertical((height - text_height) as i64, o.style.vertical);
+    Ok(lines
+        .into_iter()
+        .enumerate()
+        .map(|(i, text)| TextLine {
+            x: horizontal((width - measure(&text)) as i64, o.style.horizontal) as i32,
+            y: (top + i as i64 * step as i64) as i32,
+            text,
+        })
+        .collect())
 }

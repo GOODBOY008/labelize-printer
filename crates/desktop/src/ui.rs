@@ -13,7 +13,8 @@ use gpui_component::{
     Disableable, Icon, IconName, Selectable, Sizable, TitleBar,
 };
 use labelize_printer_core::{
-    document::DocumentKind, AppPaths, JobState, OutputFormat, PrintJobInput, Settings, Snapshot,
+    document::DocumentKind, AppPaths, JobState, OutputFormat, PrintJobInput, RenderMode, Settings,
+    Snapshot,
 };
 use std::{
     path::{Path, PathBuf},
@@ -868,6 +869,78 @@ impl PrinterApp {
         card(compact)
             .child(section_title(self.text(Text::FilesAndLabels)))
             .child(field(self.text(Text::OutputFormat), format_row))
+            .child(field(
+                self.text(Text::RenderMode),
+                button_row().children(
+                    [
+                        (RenderMode::Raster, Text::RasterMode),
+                        (RenderMode::Vector, Text::VectorMode),
+                    ]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, (mode, label))| {
+                        Button::new(("default-render-mode", i))
+                            .outline()
+                            .label(self.text(label))
+                            .selected(self.draft.render_mode == mode)
+                            .disabled(disabled)
+                            .on_click(cx.listener(move |app, _, _, cx| {
+                                app.draft.render_mode = mode;
+                                cx.notify();
+                            }))
+                    }),
+                ),
+            ))
+            .child(
+                button_row().child(
+                    Button::new("default-antialias")
+                        .outline()
+                        .selected(self.draft.antialias)
+                        .disabled(disabled)
+                        .label(self.text(if self.draft.antialias {
+                            Text::AntialiasOn
+                        } else {
+                            Text::AntialiasOff
+                        }))
+                        .on_click(cx.listener(|app, _, _, cx| {
+                            app.draft.antialias = !app.draft.antialias;
+                            cx.notify();
+                        })),
+                ),
+            )
+            .when(
+                self.draft.render_mode == RenderMode::Vector
+                    && self.draft.format == OutputFormat::Png,
+                |panel| {
+                    panel.child(field(
+                        self.text(Text::PngScale),
+                        button_row().children((1..=4u32).map(|scale| {
+                            Button::new(("default-png-scale", scale as usize))
+                                .outline()
+                                .label(format!("{scale}×"))
+                                .selected(self.draft.png_scale == scale)
+                                .disabled(disabled)
+                                .on_click(cx.listener(move |app, _, _, cx| {
+                                    app.draft.png_scale = scale;
+                                    cx.notify();
+                                }))
+                        })),
+                    ))
+                },
+            )
+            .child(div().text_sm().text_color(rgb(MUTED)).child(self.text(
+                if self.draft.render_mode == RenderMode::Vector {
+                    Text::VectorDescription
+                } else {
+                    Text::AntialiasDescription
+                },
+            )))
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(rgb(MUTED))
+                    .child(self.text(Text::RenderDefaultsDescription)),
+            )
             .child(field(self.text(Text::OutputFolder), dir))
             .child(field(
                 self.text(Text::LabelSize),

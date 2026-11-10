@@ -7,13 +7,17 @@ profile="${1:-release}"
 binary_dir="${CARGO_TARGET_DIR:-target}/$profile"
 stage="dist/deb-$profile"
 mkdir -p "$stage/DEBIAN" "$stage/opt/labelize-printer/platform" "$stage/usr/share/applications" \
-  "$stage/usr/share/icons/hicolor/scalable/apps" "$stage/usr/share/doc/labelize-printer"
+  "$stage/usr/share/icons/hicolor/256x256/apps" "$stage/usr/share/icons/hicolor/512x512/apps" \
+  "$stage/usr/share/doc/labelize-printer"
 cp --reflink=never --sparse=never "$binary_dir/labelize-printer" "$binary_dir/labelize-printer-daemon" "$binary_dir/labelize-printer-ipp" "$binary_dir/labelize-printer-updater" "$stage/opt/labelize-printer/"
 strip --strip-unneeded "$stage/opt/labelize-printer/labelize-printer" \
   "$stage/opt/labelize-printer/labelize-printer-daemon" "$stage/opt/labelize-printer/labelize-printer-ipp" "$stage/opt/labelize-printer/labelize-printer-updater"
 cp -R platform/linux "$stage/opt/labelize-printer/platform/"
 cp platform/linux/labelize-printer.desktop "$stage/usr/share/applications/"
-cp platform/icon.svg "$stage/usr/share/icons/hicolor/scalable/apps/labelize-printer.svg"
+# Clear the previous logo when reusing a packaging stage from an older build.
+rm -f "$stage/usr/share/icons/hicolor/scalable/apps/labelize-printer.svg"
+cp platform/icon.png "$stage/usr/share/icons/hicolor/256x256/apps/labelize-printer.png"
+cp platform/linux/labelize-printer.png "$stage/usr/share/icons/hicolor/512x512/apps/labelize-printer.png"
 cp LICENSE THIRD_PARTY_NOTICES.md "$stage/usr/share/doc/labelize-printer/"
 cp -R licenses "$stage/usr/share/doc/labelize-printer/"
 cat > "$stage/DEBIAN/control" <<EOF

@@ -31,7 +31,7 @@ fn checked_gtin(text: &str, body_len: usize) -> Result<String> {
     Ok(format!("{body}{}", check as char))
 }
 
-fn encode(o: &DesignObject) -> Result<(GrayImage, String)> {
+pub(super) fn encode(o: &DesignObject) -> Result<(GrayImage, String)> {
     let text = &o.text;
     ensure!(!text.is_empty(), "Barcode data is empty");
     let mut caption = text.clone();
@@ -132,6 +132,39 @@ pub(super) fn draw(
     font: &FontRef<'_>,
     dpmm: i32,
 ) -> Result<()> {
+    let layout = layout(o, canvas.width(), canvas.height(), dpmm)?;
+    let scaled = imageops::resize(
+        &layout.source,
+        layout.source.width() * layout.module,
+        layout.target_h,
+        FilterType::Nearest,
+    );
+    imageops::overlay(canvas, &scaled, layout.x, layout.y);
+    if layout.text_height > 0 {
+        let mut text = GrayImage::from_pixel(canvas.width(), layout.text_height, Luma([255]));
+        let mut text_object = o.clone();
+        text_object.style.horizontal = HorizontalAlign::Center;
+        text_object.style.vertical = VerticalAlign::Top;
+        text_object.style.wrap = false;
+        render::draw_text(&mut text, &layout.caption, &text_object, font, dpmm)?;
+        imageops::overlay(canvas, &text, 0, layout.text_y as i64);
+    }
+    Ok(())
+}
+
+pub(super) struct SymbolLayout {
+    pub source: GrayImage,
+    pub caption: String,
+    pub module: u32,
+    pub target_h: u32,
+    pub x: i64,
+    pub y: i64,
+    pub text_height: u32,
+    pub text_y: u32,
+}
+
+/// The two backends share module sizing, quiet zones, caption and alignment.
+pub(super) fn layout(o: &DesignObject, width: u32, height: u32, dpmm: i32) -> Result<SymbolLayout> {
     let (source, caption) = encode(o)?;
     let quiet = u32::from(if o.style.quiet_modules == 0 {
         o.kind.minimum_quiet()
@@ -150,16 +183,16 @@ pub(super) fn draw(
         0
     };
     ensure!(
-        text_height + gap < canvas.height(),
+        text_height + gap < height,
         "Barcode caption leaves no room for bars"
     );
-    let available_h = canvas.height() - text_height - gap;
+    let available_h = height - text_height - gap;
     let total_w = source.width() + quiet * 2;
     let total_h = source.height() + quiet * 2;
     let automatic = if o.kind.is_matrix() {
-        (canvas.width() / total_w).min(available_h / total_h)
+        (width / total_w).min(available_h / total_h)
     } else {
-        canvas.width() / total_w
+        width / total_w
     };
     let module = if o.style.module_mm == 0. {
         automatic
@@ -172,31 +205,22 @@ pub(super) fn draw(
     } else {
         available_h
     };
-    let scaled = imageops::resize(
-        &source,
-        source.width() * module,
-        target_h,
-        FilterType::Nearest,
-    );
-    let x = render::horizontal(
-        (canvas.width() - total_w * module) as i64,
-        o.style.horizontal,
-    ) + (quiet * module) as i64;
+    let x = render::horizontal((width - total_w * module) as i64, o.style.horizontal)
+        + (quiet * module) as i64;
     let y = if o.kind.is_matrix() {
         render::vertical((available_h - total_h * module) as i64, o.style.vertical)
             + (quiet * module) as i64
     } else {
         0
     };
-    imageops::overlay(canvas, &scaled, x, y);
-    if hri {
-        let mut text = GrayImage::from_pixel(canvas.width(), text_height, Luma([255]));
-        let mut text_object = o.clone();
-        text_object.style.horizontal = HorizontalAlign::Center;
-        text_object.style.vertical = VerticalAlign::Top;
-        text_object.style.wrap = false;
-        render::draw_text(&mut text, &caption, &text_object, font, dpmm)?;
-        imageops::overlay(canvas, &text, 0, (available_h + gap) as i64);
-    }
-    Ok(())
+    Ok(SymbolLayout {
+        source,
+        caption,
+        module,
+        target_h,
+        x,
+        y,
+        text_height,
+        text_y: available_h + gap,
+    })
 }

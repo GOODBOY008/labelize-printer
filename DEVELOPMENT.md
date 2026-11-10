@@ -115,6 +115,24 @@ CARGO_TARGET_DIR=target/gpui-metal-test cargo test --manifest-path vendor/gpui/C
   evicted_image_can_be_reused_without_freeing_its_neighbor -- --ignored
 ```
 
+### Rendering quality checks
+
+The source enables Labelize's existing `vector` feature. `render_modes` tests
+native PDF text/path content, multipage dimensions and copies, grayscale raster
+PDF, PNG resolution metadata and preview equality, designer barcode decoding,
+legacy settings, and atomic failure at the scaled canvas limit:
+
+```sh
+cargo test -p labelize-printer-core --test render_modes --locked
+```
+
+Per-job settings accept `render_mode: "raster" | "vector"`, `antialias: true | false`,
+and `png_scale: 1..4`. Missing fields retain the legacy raster/false/1 defaults.
+PNG scale applies only to vector PNG, not PDF or received system raster pages.
+Use `pdftotext`, `pdfimages -list`, and a PDF viewer to independently check
+native PDF text, image fallbacks and appearance; a PNG comparison alone cannot
+prove that PDF text and paths remain native.
+
 ### Background smoke tests
 
 Build the binaries and, on macOS/Linux, the native adapter first:
@@ -203,7 +221,7 @@ The repository configures a static MSVC C runtime. CI checks both executables fo
 
 ### Icons and bundled patches
 
-After changing `platform/icon.svg`, run `bash scripts/build-icons.sh` on macOS with ImageMagick installed to regenerate desktop, Windows, and macOS assets.
+The logo master is `platform/branding/labelize-studio.png`. See the [brand asset notes](platform/branding/README.md) for its design and generation prompt. After replacing the master, run `bash scripts/build-icons.sh` on macOS with ImageMagick installed to regenerate the desktop PNG, Linux PNG, Windows ICO, and macOS ICNS. Commit the master and all generated icons together. Linux packages install the 256 px and 512 px icons into the standard `hicolor` theme.
 
 Keep the provenance of bundled sources intact:
 

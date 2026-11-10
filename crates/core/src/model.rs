@@ -15,10 +15,25 @@ pub enum OutputFormat {
     Png,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RenderMode {
+    #[default]
+    Raster,
+    Vector,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Settings {
     pub output_dir: PathBuf,
     pub format: OutputFormat,
+    #[serde(default)]
+    pub render_mode: RenderMode,
+    #[serde(default)]
+    pub antialias: bool,
+    /// PNG pixels per source dot in vector mode. PDF keeps its physical size.
+    #[serde(default = "default_png_scale")]
+    pub png_scale: u32,
     pub width_mm: f64,
     pub height_mm: f64,
     pub dpmm: i32,
@@ -39,6 +54,9 @@ impl Default for Settings {
         Self {
             output_dir,
             format: OutputFormat::Pdf,
+            render_mode: RenderMode::Raster,
+            antialias: false,
+            png_scale: 1,
             width_mm: 102.0,
             height_mm: 152.0,
             dpmm: 8,
@@ -52,12 +70,23 @@ impl Default for Settings {
 }
 
 impl Settings {
+    pub fn output_scale(&self) -> u32 {
+        if self.render_mode == RenderMode::Vector && self.format == OutputFormat::Png {
+            self.png_scale
+        } else {
+            1
+        }
+    }
+
     pub fn validate(&self) -> Result<()> {
         if !self.output_dir.is_absolute() {
             bail!("Output directory must be an absolute path");
         }
         if ![8, 12].contains(&self.dpmm) {
             bail!("Resolution must be 8 or 12 dots/mm");
+        }
+        if !(1..=4).contains(&self.png_scale) {
+            bail!("PNG scale must be between 1 and 4");
         }
         validate_media(self.width_mm, self.height_mm)?;
         validate_pixels(
@@ -69,6 +98,10 @@ impl Settings {
         }
         Ok(())
     }
+}
+
+fn default_png_scale() -> u32 {
+    1
 }
 
 pub fn validate_media(width: f64, height: f64) -> Result<()> {

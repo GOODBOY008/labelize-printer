@@ -1,5 +1,5 @@
 //! Shared file/preview/output pipeline. All printer languages use Labelize;
-//! visual designs produce its language-neutral IR.
+//! visual designs retain their own native text/shape scene in vector mode.
 use crate::{design::DesignDocument, output::RenderedPage, *};
 use anyhow::{ensure, Context, Result};
 use labelize::{DrawerOptions, LabelInfo, OutputOptions, ZplParseOptions, ZplParser};
@@ -123,24 +123,54 @@ pub fn render(
     settings: &Settings,
     mut consume: impl FnMut(RenderedPage) -> Result<()>,
 ) -> Result<()> {
-    for label in parse(bytes, kind, settings)? {
-        let width_mm = label.label_width_mm.unwrap_or(settings.width_mm);
-        let height_mm = label.label_height_mm.unwrap_or(settings.height_mm);
-        validate_media(width_mm, height_mm)?;
+    settings.validate()?;
+    ensure!(
+        !bytes.is_empty() && bytes.len() as u64 <= MAX_INPUT_BYTES,
+        "Input must be 1 byte to 64 MiB"
+    );
+    if kind == DocumentKind::Design
+        && (settings.antialias || settings.render_mode == RenderMode::Vector)
+    {
+        let design: DesignDocument = serde_json::from_slice(bytes)?;
+        design.validate(settings.dpmm)?;
+        let scale = settings.output_scale();
         validate_pixels(
-            (width_mm * settings.dpmm as f64).ceil() as u32,
-            (height_mm * settings.dpmm as f64).ceil() as u32,
+            (design.width_mm * settings.dpmm as f64).ceil() as u32 * scale,
+            (design.height_mm * settings.dpmm as f64).ceil() as u32 * scale,
+        )?;
+        let pixels = design.render_pixels(
+            settings.dpmm,
+            settings.render_mode,
+            scale,
+            settings.antialias,
+        )?;
+        return consume(RenderedPage {
+            pixels,
+            width_mm: design.width_mm,
+            height_mm: design.height_mm,
+            dpi_x: settings.dpmm as f64 * 25.4 * scale as f64,
+            dpi_y: settings.dpmm as f64 * 25.4 * scale as f64,
+        });
+    }
+    for label in parse(bytes, kind, settings)? {
+        let drawer = drawing_options(&label, settings)?;
+        let (width_mm, height_mm) = (drawer.label_width_mm, drawer.label_height_mm);
+        let scale = settings.output_scale();
+        validate_pixels(
+            (width_mm * settings.dpmm as f64).ceil() as u32 * scale,
+            (height_mm * settings.dpmm as f64).ceil() as u32 * scale,
         )?;
         let png = labelize::render_label_with_output(
             &label,
-            DrawerOptions {
-                label_width_mm: width_mm,
-                label_height_mm: height_mm,
-                dpmm: settings.dpmm,
-                antialias: false,
+            drawer,
+            OutputOptions {
+                mode: match settings.render_mode {
+                    RenderMode::Raster => labelize::OutputMode::Raster,
+                    RenderMode::Vector => labelize::OutputMode::Vector,
+                },
+                scale: scale as f64,
                 ..Default::default()
             },
-            OutputOptions::default(),
             false,
         )?;
         consume(RenderedPage {
@@ -148,11 +178,56 @@ pub fn render(
                 .into_luma8(),
             width_mm,
             height_mm,
-            dpi_x: settings.dpmm as f64 * 25.4,
-            dpi_y: settings.dpmm as f64 * 25.4,
+            dpi_x: settings.dpmm as f64 * 25.4 * scale as f64,
+            dpi_y: settings.dpmm as f64 * 25.4 * scale as f64,
         })?;
     }
     Ok(())
+}
+
+fn drawing_options(label: &LabelInfo, settings: &Settings) -> Result<DrawerOptions> {
+    let width_mm = label.label_width_mm.unwrap_or(settings.width_mm);
+    let height_mm = label.label_height_mm.unwrap_or(settings.height_mm);
+    validate_media(width_mm, height_mm)?;
+    validate_pixels(
+        (width_mm * settings.dpmm as f64).ceil() as u32,
+        (height_mm * settings.dpmm as f64).ceil() as u32,
+    )?;
+    Ok(DrawerOptions {
+        label_width_mm: width_mm,
+        label_height_mm: height_mm,
+        dpmm: settings.dpmm,
+        antialias: settings.antialias,
+        ..Default::default()
+    })
+}
+
+/// Keep semantic drawing operations until the final PDF encoding step.
+pub fn vector_pdf(
+    bytes: &[u8],
+    kind: DocumentKind,
+    settings: &Settings,
+) -> Result<(Vec<u8>, usize)> {
+    settings.validate()?;
+    ensure!(
+        !bytes.is_empty() && bytes.len() as u64 <= MAX_INPUT_BYTES,
+        "Input must be 1 byte to 64 MiB"
+    );
+    if kind == DocumentKind::Design {
+        let design: DesignDocument = serde_json::from_slice(bytes)?;
+        return Ok((design.vector_pdf(settings.dpmm)?, 1));
+    }
+    let labels = parse(bytes, kind, settings)?;
+    let scenes = labels
+        .iter()
+        .map(|label| {
+            Ok(labelize::LabelScene::new(
+                label,
+                drawing_options(label, settings)?,
+            )?)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok((labelize::encode_scenes_pdf(&scenes)?, scenes.len()))
 }
 
 #[derive(Serialize, Deserialize)]

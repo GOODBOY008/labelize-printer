@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 
 mod render;
+mod scene;
 mod symbols;
 
 pub const TEMPLATE_VERSION: u32 = 2;
@@ -454,6 +455,41 @@ impl DesignDocument {
             .elements
             .push(LabelElement::GraphicField(pack(&pixels, 0, 0)));
         Ok(label)
+    }
+
+    pub fn render_pixels(
+        &self,
+        dpmm: i32,
+        mode: crate::RenderMode,
+        scale: u32,
+        antialias: bool,
+    ) -> Result<GrayImage> {
+        self.validate(dpmm)?;
+        if mode == crate::RenderMode::Vector {
+            scene::Scene::new(self, dpmm)?.raster(scale, antialias)
+        } else {
+            ensure!(scale == 1, "Raster output does not support PNG scaling");
+            let mut pixels = render::document(self, dpmm)?;
+            let size = (
+                render::canvas_extent(self.width_mm, dpmm),
+                render::canvas_extent(self.height_mm, dpmm),
+            );
+            if pixels.dimensions() != size {
+                let mut canvas = GrayImage::from_pixel(size.0, size.1, Luma([255]));
+                image::imageops::overlay(&mut canvas, &pixels, 0, 0);
+                pixels = canvas;
+            }
+            if !antialias {
+                for p in pixels.pixels_mut() {
+                    p[0] = if p[0] < 128 { 0 } else { 255 };
+                }
+            }
+            Ok(pixels)
+        }
+    }
+
+    pub fn vector_pdf(&self, dpmm: i32) -> Result<Vec<u8>> {
+        scene::Scene::new(self, dpmm)?.pdf()
     }
 }
 
