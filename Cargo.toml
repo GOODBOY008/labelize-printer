@@ -26,7 +26,7 @@ interprocess = "=2.4.7"
 fs2 = "0.4"
 libc = "0.2"
 tempfile = "3"
-labelize-printer-core = { path = "crates/core" }
+labelize-printer-core = { path = "crates/core", default-features = false }
 
 [profile.release]
 lto = "thin"

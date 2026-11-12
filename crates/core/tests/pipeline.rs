@@ -21,6 +21,7 @@ fn zpl(store: &Store, content: &[u8]) -> JobRecord {
     store.import_zpl(&file, "中文任务", "test").unwrap()
 }
 
+#[cfg(feature = "render")]
 #[test]
 fn zpl_pdf_has_copies_and_independent_physical_page_sizes() {
     let (_temp, paths, store) = setup();
@@ -58,6 +59,7 @@ fn zpl_pdf_has_copies_and_independent_physical_page_sizes() {
     assert_eq!(fs::read_dir(&job.settings.output_dir).unwrap().count(), 1);
 }
 
+#[cfg(feature = "render")]
 #[test]
 fn raster_preserves_pixels_page_order_and_resolution_without_zpl() {
     let (_temp, paths, store) = setup();
@@ -109,6 +111,7 @@ fn raster_preserves_pixels_page_order_and_resolution_without_zpl() {
     }
 }
 
+#[cfg(feature = "render")]
 #[test]
 fn failed_output_is_retryable_without_changing_settings_snapshot_or_id() {
     let (temp, paths, store) = setup();
@@ -156,6 +159,7 @@ fn interrupted_reception_fails_and_processing_recovers() {
     assert!(store.retry(&partial.id).is_err());
 }
 
+#[cfg(feature = "render")]
 #[test]
 fn limits_and_invalid_inputs_do_not_commit_output() {
     let (_temp, paths, store) = setup();

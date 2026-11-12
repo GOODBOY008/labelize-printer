@@ -3,9 +3,10 @@ name = "labelize-printer"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
 
 [dependencies]
-labelize-printer-core.workspace = true
+labelize-printer-core = { workspace = true, features = ["render"] }
 labelize-printer-updater = { path = "../updater" }
 anyhow.workspace = true
 serde.workspace = true

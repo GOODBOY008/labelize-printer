@@ -1,3 +1,5 @@
+#![cfg(feature = "render")]
+
 use labelize_printer_core::{
     design::{DesignDocument, DesignObject, ObjectKind},
     document::{self, DocumentKind, PreviewRequest},

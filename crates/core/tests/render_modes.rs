@@ -1,3 +1,5 @@
+#![cfg(feature = "render")]
+
 use image::{GrayImage, Luma};
 use labelize_printer_core::{
     design::*,

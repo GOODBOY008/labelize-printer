@@ -1,8 +1,10 @@
+#[cfg(feature = "render")]
 pub mod design;
 pub mod document;
 pub mod ipc;
 pub mod maintenance;
 pub mod model;
+#[cfg(feature = "render")]
 pub mod output;
 pub mod paths;
 pub mod platform;

@@ -3,6 +3,22 @@ name = "labelize-printer-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
+
+[features]
+default = ["render"]
+render = [
+    "dep:ab_glyph",
+    "dep:base64",
+    "dep:flate2",
+    "dep:image",
+    "dep:imageproc",
+    "dep:krilla",
+    "dep:labelize",
+    "dep:lopdf",
+    "dep:png",
+    "dep:tiny-skia",
+]
 
 [dependencies]
 anyhow.workspace = true
@@ -10,21 +26,21 @@ serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
 uuid.workspace = true
-image.workspace = true
-ab_glyph = "0.2"
-base64 = "0.22"
-imageproc = "0.27"
-lopdf.workspace = true
-flate2.workspace = true
-png = "0.18"
+image = { workspace = true, optional = true }
+ab_glyph = { version = "0.2", optional = true }
+base64 = { version = "0.22", optional = true }
+imageproc = { version = "0.27", optional = true }
+lopdf = { workspace = true, optional = true }
+flate2 = { workspace = true, optional = true }
+png = { version = "0.18", optional = true }
 rusqlite.workspace = true
 directories.workspace = true
 interprocess.workspace = true
 fs2.workspace = true
 libc.workspace = true
-labelize = { version = "=1.12.0", default-features = false, features = ["vector"] }
-krilla = { version = "0.8.2", default-features = false, features = ["raster-images"] }
-tiny-skia = "0.12"
+labelize = { version = "=1.12.0", default-features = false, features = ["vector"], optional = true }
+krilla = { version = "0.8.2", default-features = false, features = ["raster-images"], optional = true }
+tiny-skia = { version = "0.12", optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true
