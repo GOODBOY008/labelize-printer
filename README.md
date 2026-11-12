@@ -6,7 +6,7 @@
 
 [![Build and package](https://github.com/GOODBOY008/labelize-studio/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/GOODBOY008/labelize-studio/actions/workflows/build.yml)
 
-[Download](https://github.com/GOODBOY008/labelize-studio/releases) · [Get started](#get-started) · [Designer guide](DESIGNER.md) · [Build from source](DEVELOPMENT.md) · [Report an issue](https://github.com/GOODBOY008/labelize-studio/issues)
+[Download](https://github.com/GOODBOY008/labelize-studio/releases) · [Screenshots](#screenshots) · [Get started](#get-started) · [Designer guide](DESIGNER.md) · [Build from source](DEVELOPMENT.md) · [Report an issue](https://github.com/GOODBOY008/labelize-studio/issues)
 
 Labelize Studio (formerly Labelize Printer) is a desktop label workspace for **Windows, macOS, and Linux**. Create visual designs, open ZPL, EPL, TSPL/TSC, CPCL, and DPL files, preview labels side by side, and save the results as PDF or PNG. A multi-tab workspace keeps each document's edits, preview, and export settings together, with local drafts and session recovery.
 
@@ -15,6 +15,18 @@ The app also provides a **local virtual printer**: select **Labelize Printer** i
 Built with **Rust + GPUI**, the desktop app uses the [Labelize engine](https://github.com/GOODBOY008/labelize) for printer-language parsing and rendering. Labelize is the reusable engine, available as a library, CLI, HTTP service, WebAssembly package, and Android library; this project adds the desktop workspace, visual designer, virtual printer, and job management.
 
 > **v0.4.0 — Labelize Studio:** the new name brings together the [expanded designer](DESIGNER.md), cached tab previews, and [in-app updates](UPDATES.md). Existing settings, drafts, jobs, and the **Labelize Printer** system queue are retained. See [Migration](MIGRATION.md) before upgrading and [Acceptance](ACCEPTANCE.md) for verified environments and remaining checks.
+
+## Screenshots
+
+**Visual designer:** add text, shapes and barcodes, organize layers, and preview the label before exporting.
+
+![Labelize Studio designer with barcode tools, layers, a label canvas, and PDF export options](docs/screenshots/designer.jpg)
+
+**Label-file workspace:** open multiple documents, inspect page thumbnails and dimensions, and choose PDF or PNG output for each tab.
+
+![Labelize Studio previewing a two-page ZPL sample with independent export settings](docs/screenshots/workspace.jpg)
+
+Captured on macOS from development commit `7155d05`, using synthetic sample data. The refreshed logo and Raster/Vector, Antialias, and PNG-scale controls shown here are on `main` and are **not included in v0.4.0 installers**. Try the [designer showcase](examples/designer-showcase.labelize.json) or [two-page ZPL example](examples/shipping-demo.zpl); [capture details](docs/screenshots/README.md).
 
 ## What you can do
 
