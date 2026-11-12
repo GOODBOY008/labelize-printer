@@ -14,7 +14,7 @@ The app also provides a **local virtual printer**: select **Labelize Printer** i
 
 Built with **Rust + GPUI**, the desktop app uses the [Labelize engine](https://github.com/GOODBOY008/labelize) for printer-language parsing and rendering. Labelize is the reusable engine, available as a library, CLI, HTTP service, WebAssembly package, and Android library; this project adds the desktop workspace, visual designer, virtual printer, and job management.
 
-> **v0.4.0 — Labelize Studio:** the new name brings together the [expanded designer](docs/designer.md), cached tab previews, and [in-app updates](docs/updates.md). Existing settings, drafts, jobs, and the **Labelize Printer** system queue are retained. See [Migration](docs/migration.md) before upgrading and [Acceptance](docs/acceptance.md) for verified environments and remaining checks.
+> **v0.5.0** adds searchable vector PDF, optional antialiasing, and 1×–4× PNG export. Printer-language rendering uses Labelize 1.12.0. See [Migration](docs/migration.md) before upgrading and [Acceptance](docs/acceptance.md) for verified environments and remaining checks.
 
 ## Screenshots
 
@@ -26,7 +26,7 @@ Built with **Rust + GPUI**, the desktop app uses the [Labelize engine](https://g
 
 ![Labelize Studio previewing a two-page ZPL sample with independent export settings](docs/screenshots/workspace.jpg)
 
-Captured on macOS from development commit `7155d05`, using synthetic sample data. The refreshed logo and Raster/Vector, Antialias, and PNG-scale controls shown here are on `main` and are **not included in v0.4.0 installers**. Try the [designer showcase](examples/designer-showcase.labelize.json) or [two-page ZPL example](examples/shipping-demo.zpl); [capture details](docs/screenshots/README.md).
+Captured on macOS from development commit `7155d05` using synthetic sample data. The refreshed logo and export controls shown here ship in v0.5.0. Try the [designer showcase](examples/designer-showcase.labelize.json) or [two-page ZPL example](examples/shipping-demo.zpl). See the [capture details](docs/screenshots/README.md).
 
 ## What you can do
 
@@ -37,7 +37,7 @@ Captured on macOS from development commit `7155d05`, using synthetic sample data
 | Label files | Open ZPL, EPL, TSPL/TSC, CPCL, or DPL; edit supported text files and preview each page. | v0.2.0 |
 | Multi-tab workspace | Independent edits, automatic previews, recent files, and local session/draft recovery. | v0.3.0 |
 | PDF/PNG export | Save all pages as one raster PDF or one PNG per page. | v0.2.0 |
-| Rendering quality | Optional antialiasing, native vector PDF, and 1–4× PNG rendering from a vector scene. | Unreleased |
+| Rendering quality | Optional antialiasing, native vector PDF, and 1–4× PNG rendering from a vector scene. | v0.5.0 |
 | Portable templates | Save editable `.labelize.json` templates with embedded images and imported fonts. | v0.2.0 |
 | Virtual printer | Select a local system printer and capture jobs as PDF or PNG while the desktop window is closed. | v0.1.2 |
 | Job management | Choose an output folder, inspect results, open saved files, and retry failed jobs. | v0.1.2 |
@@ -77,7 +77,7 @@ Upgrading from Labelize Printer? Follow the [migration guide](docs/migration.md)
 
 ### Software updates
 
-Version 0.4.0 adds **Settings → Software update**. It checks stable GitHub releases at startup at most once every 24 hours; you can turn this off or check manually. Downloading and installing always require your action. Install v0.4.0 once through an installer or Homebrew; v0.3.0 does not include an updater.
+**Settings → Software update** is available from v0.4.0 onward. It checks stable GitHub releases at startup at most once every 24 hours. You can turn this off or check manually. Downloading and installing always require your action. To upgrade from v0.3.0 or earlier, install the current version through an installer or Homebrew.
 
 Direct installations download the matching full installer and verify its size and SHA256 against both `SHA256SUMS` and GitHub's asset digest. Homebrew installations keep using Homebrew. On Linux, a missing DEB handler falls back to the downloaded file and a safely quoted `apt` command.
 

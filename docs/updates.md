@@ -2,7 +2,7 @@
 
 [README](../README.md) · [Architecture](architecture.md) · [Development](development.md)
 
-The first updater-enabled version is **Labelize Studio v0.4.0**. Upgrade once using an installer or Homebrew; v0.3.0 has no update UI. Follow [Migration](migration.md) to stop the old background service before installation and reopen Studio afterward.
+The first updater-enabled version is **Labelize Studio v0.4.0**. To upgrade from v0.3.0 or earlier, install the current version through an installer or Homebrew. Follow [Migration](migration.md) to stop the old background service before installation and reopen Studio afterward.
 
 ## User flow
 

@@ -9,4 +9,4 @@ These are native macOS screenshots of Labelize Studio, captured on 2026-11-12 fr
 
 All label content is synthetic demonstration data. The sample shipping label is not valid postage. The output path belongs to the isolated demonstration session.
 
-The screenshots include the refreshed logo and Antialias/Vector controls, which are in `main` but absent from the published v0.4.0 installers. Keep this distinction visible anywhere these captures are reused. The macOS window-sharing indicator and pointer, where present, come from the capture environment.
+The refreshed logo and Antialias/Vector controls shown here ship in v0.5.0. The macOS window-sharing indicator and pointer, where present, come from the capture environment.
