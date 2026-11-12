@@ -11,7 +11,7 @@ sRGB input for grayscale conversion. See [the native build script](scripts/build
 The legacy xattr 0.2.3 dependency has a Linux/Android libc compatibility patch;
 see [the xattr patch notes](vendor/xattr/PATCH.md) (MIT / Apache-2.0).
 GPUI 0.2.2 includes application-local patches for X11 visual selection and
-embedded Windows debug shaders; see [the GPUI patch notes](vendor/gpui/PATCH.md).
+Metal image-atlas eviction; see [the GPUI patch notes](vendor/gpui/PATCH.md).
 
 [The license collection script](scripts/collect-licenses.py) creates the `licenses/` directory and an index from
 the pinned Cargo.lock and locally built sources. All installation packages

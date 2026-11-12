@@ -14,11 +14,6 @@ performs one deferred X11 configure/restore cycle after window creation to
 initialize the mapped drawable without requiring a manual resize.
 Revisit the X11 patch when updating GPUI or adding transparent top-level windows.
 
-On Windows, `src/platform/windows/directx_renderer.rs` compiles debug shaders
-from embedded HLSL. This lets the internal installer run without the source
-checkout on the destination machine. `crates/desktop/build.rs` embeds GPUI's
-Common Controls v6 and DPI manifest for MinGW cross builds.
-
 On macOS, `src/platform/mac/metal_atlas.rs` removes each evicted image key
 immediately, matching the DirectX and Blade backends. Previously it kept the key
 while another image shared the texture. Reusing a decoded preview then decremented
@@ -27,3 +22,8 @@ panicking in `MetalAtlasState::texture`. The Metal regression test exercises
 repeated removal/reinsertion while a neighboring tile remains live. The desktop
 also releases textures at a frame boundary and rebuilds that frame so a retained
 previous scene cannot reference an evicted texture.
+
+Windows installers use release builds. GPUI compiles HLSL with the Windows SDK's
+`fxc.exe` during the build and embeds the resulting shader bytecode.
+`crates/desktop/build.rs` supplies GPUI's Common Controls v6 and DPI manifest
+for MinGW cross builds.

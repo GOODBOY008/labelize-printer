@@ -1394,10 +1394,10 @@ pub(crate) mod shader_resources {
     #[cfg(debug_assertions)]
     use windows::{
         Win32::Graphics::Direct3D::{
-            Fxc::{D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION, D3DCompile},
-            ID3DBlob, ID3DInclude,
+            Fxc::{D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION, D3DCompileFromFile},
+            ID3DBlob,
         },
-        core::PCSTR,
+        core::{HSTRING, PCSTR},
     };
 
     #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -1491,17 +1491,15 @@ pub(crate) mod shader_resources {
     #[cfg(debug_assertions)]
     pub(super) fn build_shader_blob(entry: ShaderModule, target: ShaderTarget) -> Result<ID3DBlob> {
         unsafe {
-            // Trial builds run without the source checkout or the build machine's paths.
-            let (shader_name, shader_source) = if matches!(entry, ShaderModule::EmojiRasterization) {
-                (c"color_text_raster.hlsl", include_str!("color_text_raster.hlsl"))
-            } else {
-                (c"shaders.hlsl", include_str!("shaders.hlsl"))
+            use windows::Win32::Graphics::{
+                Direct3D::ID3DInclude, Hlsl::D3D_COMPILE_STANDARD_FILE_INCLUDE,
             };
-            let shader_source = shader_source.replacen(
-                "#include \"alpha_correction.hlsl\"",
-                include_str!("alpha_correction.hlsl"),
-                1,
-            );
+
+            let shader_name = if matches!(entry, ShaderModule::EmojiRasterization) {
+                "color_text_raster.hlsl"
+            } else {
+                "shaders.hlsl"
+            };
 
             let entry = format!(
                 "{}_{}\0",
@@ -1518,16 +1516,22 @@ pub(crate) mod shader_resources {
 
             let mut compile_blob = None;
             let mut error_blob = None;
+            let shader_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join(&format!("src/platform/windows/{}", shader_name))
+                .canonicalize()?;
 
             let entry_point = PCSTR::from_raw(entry.as_ptr());
             let target_cstr = PCSTR::from_raw(target.as_ptr());
 
-            let ret = D3DCompile(
-                shader_source.as_ptr().cast(),
-                shader_source.len(),
-                PCSTR::from_raw(shader_name.as_ptr().cast()),
+            // really dirty trick because winapi bindings are unhappy otherwise
+            let include_handler = &std::mem::transmute::<usize, ID3DInclude>(
+                D3D_COMPILE_STANDARD_FILE_INCLUDE as usize,
+            );
+
+            let ret = D3DCompileFromFile(
+                &HSTRING::from(shader_path.to_str().unwrap()),
                 None,
-                None::<&ID3DInclude>,
+                include_handler,
                 entry_point,
                 target_cstr,
                 D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
