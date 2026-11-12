@@ -7,7 +7,7 @@ out = root / 'licenses'; out.mkdir(exist_ok=True)
 rows = []
 for package in tomllib.loads((root/'Cargo.lock').read_text(encoding='utf-8'))['package']:
     if package['name'].startswith('labelize-printer'): continue
-    if package['name'] in ('labelize','xattr','gpui'): directory = root/'vendor'/package['name']
+    if package['name'] in ('xattr','gpui'): directory = root/'vendor'/package['name']
     else:
         candidates = list(registry.glob(f"*/{package['name']}-{package['version']}"))
         if not candidates: continue  # Target-specific packages not included in this build.
@@ -15,14 +15,23 @@ for package in tomllib.loads((root/'Cargo.lock').read_text(encoding='utf-8'))['p
     info = tomllib.loads((directory/'Cargo.toml').read_text(encoding='utf-8'))['package']
     name = f"{package['name']}-{package['version']}"
     files = [p for p in directory.iterdir() if p.is_file() and p.name.upper().startswith(('LICENSE','LICENCE','COPYING','NOTICE'))]
-    for p in files:
-        dest = out / name / p.name; dest.parent.mkdir(exist_ok=True); shutil.copyfile(p, dest)
-    rows.append(f"| {name} | {info.get('license') or 'See bundled license'} | {'; '.join(p.name for p in files) or 'See upstream repository'} |")
+    if package['name'] == 'labelize':
+        files.extend([
+            directory / 'THIRD_PARTY_LICENSES.md',
+            directory / 'THIRD_PARTY_NOTICES.md',
+            *sorted((directory / 'licenses').glob('*.txt')),
+        ])
+    notice_paths = [p.relative_to(directory) for p in files]
+    for notice_path in notice_paths:
+        dest = out / name / notice_path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(directory / notice_path, dest)
+    notices = '; '.join(path.as_posix() for path in notice_paths) or 'See upstream repository'
+    rows.append(f"| {name} | {info.get('license') or 'See bundled license'} | {notices} |")
 for source, name in [(root/'.cache/pappl-1.4.12/LICENSE','PAPPL-1.4.12.txt'),
                      (root/'.cache/openssl-3.5.9/LICENSE.txt','OpenSSL-3.5.9.txt'),
                      (root/'vendor/gpui/PATCH.md','GPUI-patch.md'),
-                     (root/'vendor/xattr/PATCH.md','xattr-patch.md'),
-                     (root/'vendor/labelize/THIRD_PARTY_LICENSES.md','Labelize-assets.md')]:
+                     (root/'vendor/xattr/PATCH.md','xattr-patch.md')]:
     if source.exists(): shutil.copyfile(source, out/name)
 (out/'INDEX.md').write_text('# Third-party notices\n\nGenerated from Cargo.lock and dependency sources present for this build.\n\n'
     'PAPPL 1.4.12: Apache-2.0 with LLVM exception. Raster compatibility patches are in scripts/build-native.sh. '

@@ -1,7 +1,7 @@
 [workspace]
 members = ["crates/core", "crates/daemon", "crates/desktop", "crates/updater"]
 default-members = ["crates/core", "crates/daemon", "crates/updater"]
-exclude = ["vendor/labelize", "vendor/xattr", "vendor/gpui"]
+exclude = ["vendor/xattr", "vendor/gpui"]
 resolver = "2"
 
 [workspace.package]
@@ -18,7 +18,7 @@ clap = { version = "4", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 image = { version = "0.25", default-features = false, features = ["png", "pnm"] }
-lopdf = "0.46"
+lopdf = "0.47"
 flate2 = "1"
 rusqlite = { version = "0.37", features = ["bundled"] }
 directories = "6"

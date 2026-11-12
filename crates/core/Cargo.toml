@@ -22,7 +22,7 @@ directories.workspace = true
 interprocess.workspace = true
 fs2.workspace = true
 libc.workspace = true
-labelize = { path = "../../vendor/labelize", default-features = false, features = ["vector"] }
+labelize = { version = "=1.12.0", default-features = false, features = ["vector"] }
 krilla = { version = "0.8.2", default-features = false, features = ["raster-images"] }
 tiny-skia = "0.12"
 

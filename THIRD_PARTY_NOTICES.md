@@ -1,6 +1,6 @@
 # Third-party notices
 
-Labelize Studio uses Labelize (MIT), GPUI, gpui-component and gpui-component-assets (Apache-2.0),
+Labelize Studio uses Labelize (MIT AND BSD-3-Clause), GPUI, gpui-component and gpui-component-assets (Apache-2.0),
 PAPPL 1.4.12 (Apache-2.0 with LLVM exception), and OpenSSL 3.5.9 (Apache-2.0).
 Native vector PDF uses krilla (MIT / Apache-2.0); scene rasterization uses
 tiny-skia (BSD-3-Clause). Their dependencies and notices are included by the
