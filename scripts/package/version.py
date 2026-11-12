@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 import tomllib
 
-manifest = Path(__file__).resolve().parents[1] / "Cargo.toml"
+manifest = Path(__file__).resolve().parents[2] / "Cargo.toml"
 with manifest.open("rb") as source:
     version = tomllib.load(source)["workspace"]["package"]["version"]
 

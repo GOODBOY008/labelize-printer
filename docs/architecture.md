@@ -1,6 +1,6 @@
 # Architecture
 
-[README](README.md) · [Development guide](DEVELOPMENT.md) · [Acceptance record](ACCEPTANCE.md)
+[README](../README.md) · [Development guide](development.md) · [Acceptance record](acceptance.md)
 
 Labelize Studio separates input acquisition, job management, rendering, and file output. Printer-language files use Labelize; system raster pages are already laid out and go directly through raster adaptation and file encoding. LPrint is not a dependency.
 
@@ -32,12 +32,18 @@ flowchart TD
 | --- | --- |
 | `crates/desktop` | GPUI setup, output settings, recent jobs, file editing, visual design, and preview controls. |
 | `crates/daemon` | RAW reception, authenticated local IPC, job scheduling, isolated render workers, and the PAPPL process lifecycle. |
+| `crates/updater` | Release verification, download, and installer handoff using shared paths, state, and IPC. |
 | `crates/core` | Settings, SQLite persistence, input snapshots, typed job boundaries, platform integration, document rendering, and output commits. |
 | `native/ipp` | PAPPL job/page callbacks, raster validation and normalization, copy expansion, and reporting completion after files are saved. |
-| `vendor/labelize` | Pinned language parsers, barcode encoders, and renderer. See [provenance](vendor/labelize/PROVENANCE.md). |
-| `platform` / `scripts` | System queues, login services, native builds, icons, and installers. |
+| Labelize | Language parsers, barcode encoders, and renderer from the crates.io release pinned in the [core manifest](../crates/core/Cargo.toml). |
+| `platform` | System queue and login-service integration, icons, and installer definitions. |
+| [`scripts/build`](../scripts/build) | Native dependencies, Linux build image, and icon generation. |
+| [`scripts/package`](../scripts/package) | Installers, version metadata, and license collection. |
+| [`scripts/test`](../scripts/test) | Background smoke tests, system printing checks, and migration tests. |
 
-Within core, `document` dispatches label files to the appropriate parser and renderer. `design` composes visual objects and Labelize barcode output, preserving semantic drawing operations in vector mode. `output` accepts normalized raster pages or encoded native PDF and commits files with the same atomic directory/receipt protocol. Operating-system integration and job management stay outside the Labelize dependency.
+Within core, the default `render` feature provides label parsing, design rendering, and output encoding for the desktop and daemon. The standalone updater builds with the shared state and IPC APIs. `core::platform` dispatches to target-specific modules for macOS, Linux, and Windows. The macOS and Linux modules share CUPS queue operations.
+
+`document` dispatches label files to the appropriate parser and renderer. `design` composes visual objects and Labelize barcode output, preserving semantic drawing operations in vector mode. `output` accepts normalized raster pages or encoded native PDF and commits files with the same atomic directory/receipt protocol. Operating-system integration and job management stay outside the Labelize dependency.
 
 ## Input boundaries and copies
 
@@ -122,7 +128,7 @@ Design format version 2 stores up to 100 objects in `.labelize.json`: geometry i
 
 `Settings` adds backward-compatible defaults for `render_mode` (raster), `antialias` (false), and `png_scale` (1). These fields travel in immutable job snapshots and per-tab drafts. Raster mode ignores pixel scale; vector PNG permits 1–4× rendering, updating resolution metadata without changing physical dimensions. PDF never applies PNG scale. The scaled canvas is checked against the existing pixel limits before allocation. Render-setting edits increment the document revision and cancel obsolete previews without setting the source-file dirty flag. IPP raster pages bypass these controls and retain their received samples and resolution.
 
-Missing font glyphs, overflowing text, invalid geometry or barcode data, and symbols that cannot fit are rejected. Preview and export apply the same rules; hidden objects are omitted from both. Locking is an editor constraint and does not suppress output. Rotation is clockwise in quarter turns; stored width/height are unrotated, while placement and label alignment use the rotated bounds. See [Designer](DESIGNER.md) for properties and input constraints. Importing printer-language source does not reconstruct visual objects.
+Missing font glyphs, overflowing text, invalid geometry or barcode data, and symbols that cannot fit are rejected. Preview and export apply the same rules; hidden objects are omitted from both. Locking is an editor constraint and does not suppress output. Rotation is clockwise in quarter turns; stored width/height are unrotated, while placement and label alignment use the rotated bounds. See [Designer](designer.md) for properties and input constraints. Importing printer-language source does not reconstruct visual objects.
 
 ## Local communication and lifecycle
 
@@ -161,4 +167,4 @@ Dimensions and resolutions must be finite and valid. Jobs must be self-contained
 
 The independent `crates/updater` library and helper handle stable-release discovery, installer verification and platform handoff. Desktop checks/downloads run independently from print-status polling and label previews. The helper has no GPUI dependency and executes from private storage outside the installation directory.
 
-An authenticated, expiring admission lease coordinates `PrepareUpdate`, `CancelUpdate` and `CommitUpdate` with RAW sockets, IPP task creation, local submissions and retries. A durable pending record blocks supervisor restarts while installation is incomplete. Reopening verifies component versions and the system package receipt before resuming printing and workspace recovery. See [UPDATES.md](UPDATES.md) for the platform routes, failure behavior and release-asset contract.
+An authenticated, expiring admission lease coordinates `PrepareUpdate`, `CancelUpdate` and `CommitUpdate` with RAW sockets, IPP task creation, local submissions and retries. A durable pending record blocks supervisor restarts while installation is incomplete. Reopening verifies component versions and the system package receipt before resuming printing and workspace recovery. See [Software updates](updates.md) for the platform routes, failure behavior and release-asset contract.

@@ -6,7 +6,7 @@
 
 [![Build and package](https://github.com/GOODBOY008/labelize-studio/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/GOODBOY008/labelize-studio/actions/workflows/build.yml)
 
-[Download](https://github.com/GOODBOY008/labelize-studio/releases) · [Screenshots](#screenshots) · [Get started](#get-started) · [Designer guide](DESIGNER.md) · [Build from source](DEVELOPMENT.md) · [Report an issue](https://github.com/GOODBOY008/labelize-studio/issues)
+[Download](https://github.com/GOODBOY008/labelize-studio/releases) · [Screenshots](#screenshots) · [Get started](#get-started) · [Designer guide](docs/designer.md) · [Build from source](docs/development.md) · [Report an issue](https://github.com/GOODBOY008/labelize-studio/issues)
 
 Labelize Studio (formerly Labelize Printer) is a desktop label workspace for **Windows, macOS, and Linux**. Create visual designs, open ZPL, EPL, TSPL/TSC, CPCL, and DPL files, preview labels side by side, and save the results as PDF or PNG. A multi-tab workspace keeps each document's edits, preview, and export settings together, with local drafts and session recovery.
 
@@ -14,7 +14,7 @@ The app also provides a **local virtual printer**: select **Labelize Printer** i
 
 Built with **Rust + GPUI**, the desktop app uses the [Labelize engine](https://github.com/GOODBOY008/labelize) for printer-language parsing and rendering. Labelize is the reusable engine, available as a library, CLI, HTTP service, WebAssembly package, and Android library; this project adds the desktop workspace, visual designer, virtual printer, and job management.
 
-> **v0.4.0 — Labelize Studio:** the new name brings together the [expanded designer](DESIGNER.md), cached tab previews, and [in-app updates](UPDATES.md). Existing settings, drafts, jobs, and the **Labelize Printer** system queue are retained. See [Migration](MIGRATION.md) before upgrading and [Acceptance](ACCEPTANCE.md) for verified environments and remaining checks.
+> **v0.4.0 — Labelize Studio:** the new name brings together the [expanded designer](docs/designer.md), cached tab previews, and [in-app updates](docs/updates.md). Existing settings, drafts, jobs, and the **Labelize Printer** system queue are retained. See [Migration](docs/migration.md) before upgrading and [Acceptance](docs/acceptance.md) for verified environments and remaining checks.
 
 ## Screenshots
 
@@ -45,7 +45,7 @@ Captured on macOS from development commit `7155d05`, using synthetic sample data
 
 ## Get started
 
-After installing a release or [building from source](DEVELOPMENT.md#build-and-run), open **Workspace** and choose a starting point:
+After installing a release or [building from source](docs/development.md#build-and-run), open **Workspace** and choose a starting point:
 
 - **Create a label:** choose **New design**, add objects, set the label dimensions, and edit properties in the inspector. The app includes a [showcase template](examples/designer-showcase.labelize.json) that demonstrates the expanded designer.
 - **Work with printer code:** choose **Open file** to load a label file, switch between **Preview** and **Source**, and inspect its pages.
@@ -73,7 +73,7 @@ On macOS, Homebrew selects the package for your architecture:
 brew install --cask goodboy008/labelize-studio/labelize-studio
 ```
 
-Upgrading from Labelize Printer? Follow the [migration guide](MIGRATION.md) to stop the old background service safely. See the [Homebrew tap](https://github.com/GOODBOY008/homebrew-labelize-studio) for upgrade instructions. For Debian or Ubuntu, use `sudo apt install ./<downloaded-package>.deb` to install the downloaded package with its dependencies.
+Upgrading from Labelize Printer? Follow the [migration guide](docs/migration.md) to stop the old background service safely. See the [Homebrew tap](https://github.com/GOODBOY008/homebrew-labelize-studio) for upgrade instructions. For Debian or Ubuntu, use `sudo apt install ./<downloaded-package>.deb` to install the downloaded package with its dependencies.
 
 ### Software updates
 
@@ -81,7 +81,7 @@ Version 0.4.0 adds **Settings → Software update**. It checks stable GitHub rel
 
 Direct installations download the matching full installer and verify its size and SHA256 against both `SHA256SUMS` and GitHub's asset digest. Homebrew installations keep using Homebrew. On Linux, a missing DEB handler falls back to the downloaded file and a safely quoted `apt` command.
 
-Before installation, the app retains your workspace drafts, waits for file operations, and requires the print queue to be idle. **Quit and install** pauses printing and hands off to the system installer. Finish or cancel installation, then reopen the app to verify the installed components and restore your workspace. Trial packages remain unsigned. See [Software updates](UPDATES.md) for recovery and release requirements.
+Before installation, the app retains your workspace drafts, waits for file operations, and requires the print queue to be idle. **Quit and install** pauses printing and hands off to the system installer. Finish or cancel installation, then reopen the app to verify the installed components and restore your workspace. Trial packages remain unsigned. See [Software updates](docs/updates.md) for recovery and release requirements.
 
 ### First system print
 
@@ -98,7 +98,7 @@ Defaults are PDF, the `Labelize` folder under Documents, a 102 × 152 mm label, 
 
 ## Open and design labels
 
-Install v0.4.0 or later for the **Workspace** and designer features described here. Installers are available from [GitHub Releases](https://github.com/GOODBOY008/labelize-studio/releases); you can also [build from source](DEVELOPMENT.md#build-and-run).
+Install v0.4.0 or later for the **Workspace** and designer features described here. Installers are available from [GitHub Releases](https://github.com/GOODBOY008/labelize-studio/releases); you can also [build from source](docs/development.md#build-and-run).
 
 ### Open a label file
 
@@ -122,7 +122,7 @@ Each tab restores these options with its draft. Changing them refreshes the prev
 
 Choose **New design** to start a template. Select an object on the canvas or in the object list, drag it to move, and edit its position and size in millimetres. Property edits update the preview automatically. Duplicate or delete the selected object, and use **Undo** and **Redo** to restore design changes. Each tab keeps its own design history.
 
-Version **0.4.0** expands the designer to 15 object types: text, rectangles, ellipses, lines, images, and ten barcode formats. The inspector offers rotation, text wrapping and alignment, fills and rounded corners, image fitting, barcode parameters, and layer naming, visibility, locking, and order. A bottom-right handle resizes the selected object; arrow keys move it precisely when the canvas has focus. See the [designer guide](DESIGNER.md) for the full property list and a sample template.
+Version **0.4.0** expands the designer to 15 object types: text, rectangles, ellipses, lines, images, and ten barcode formats. The inspector offers rotation, text wrapping and alignment, fills and rounded corners, image fitting, barcode parameters, and layer naming, visibility, locking, and order. A bottom-right handle resizes the selected object; arrow keys move it precisely when the canvas has focus. See the [designer guide](docs/designer.md) for the full property list and a sample template.
 
 **Save** writes back to the source file, asking for a path only for an untitled document. **Save as** is in the overflow menu. A design is saved as a portable `.labelize.json` template containing its objects, images, and imported font. Reopen the file to continue editing. For Chinese or other text outside the default font's coverage, import a compatible TrueType/OpenType font of up to 32 MiB. Missing glyphs, overflowing text, and undersized barcodes produce errors. Images are composited over white and rendered in monochrome.
 
@@ -144,7 +144,7 @@ Existing printer-language files remain source documents; they are not reconstruc
 
 Closing an edited tab offers **Save / Discard / Cancel**. Closing the window saves the workspace and leaves accepted output jobs running. On reopening, tabs, raw drafts (including incomplete fields), page selection, zoom, and export options are restored. Drafts autosave locally after one second; they do not overwrite source files or clear the unsaved indicator. If the source changes externally, saving offers a conflict prompt. Missing source files can be located again without losing the draft.
 
-The interface uses a compact sidebar below 1000 logical pixels and an inspector drawer with an overflow toolbar below 700. **Jobs** filters the latest 100 records; **Recent files** keeps 20 paths. Preview runs in one cancellable child process at a time and is bounded to 128 Mi pixels; exports retain the [job resource limits](ARCHITECTURE.md#resource-limits-and-retention).
+The interface uses a compact sidebar below 1000 logical pixels and an inspector drawer with an overflow toolbar below 700. **Jobs** filters the latest 100 records; **Recent files** keeps 20 paths. Preview runs in one cancellable child process at a time and is bounded to 128 Mi pixels; exports retain the [job resource limits](docs/architecture.md#resource-limits-and-retention).
 
 ## How it works
 
@@ -157,12 +157,13 @@ The interface uses a compact sidebar below 1000 logical pixels and an inspector 
 
 The background service snapshots each job's settings, persists the input and status in private local storage, and commits output files before reporting success. System raster pages retain their dimensions and order without being converted to ZPL. LPrint is not a dependency.
 
-See [Architecture](ARCHITECTURE.md) for component responsibilities, task boundaries, recovery, and local communication.
+See [Architecture](docs/architecture.md) for component responsibilities, task boundaries, recovery, and local communication.
 
 ## Development and support
 
-- [Development guide](DEVELOPMENT.md): build, run, CLI commands, tests, packaging, and troubleshooting.
-- [Acceptance record](ACCEPTANCE.md): automated checks, native desktop evidence, and outstanding platform tests.
+- [Documentation](docs/README.md) covers using, developing, and verifying Studio.
+- [Development guide](docs/development.md): build, run, CLI commands, tests, packaging, and troubleshooting.
+- [Acceptance record](docs/acceptance.md): automated checks, native desktop evidence, and outstanding platform tests.
 - [GitHub Issues](https://github.com/GOODBOY008/labelize-studio/issues): include your OS and architecture, version or commit, input route, expected result, and diagnostic message. Attach a minimal label sample with private data removed when possible.
 
 The current scope is one user, one computer, and one local queue. Jobs must be self-contained; printer resources are not shared between jobs. Network sharing and multiple-user queues are outside the current scope.

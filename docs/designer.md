@@ -1,10 +1,10 @@
 # Label designer
 
-[README](README.md) · [Architecture](ARCHITECTURE.md) · [Acceptance](ACCEPTANCE.md)
+[README](../README.md) · [Architecture](architecture.md) · [Acceptance](acceptance.md)
 
 This guide describes the expanded designer in **Labelize Studio v0.4.0**. Existing Labelize Printer templates remain compatible.
 
-Choose **Workspace → New design**, or open the [showcase template](examples/designer-showcase.labelize.json). Objects are listed from front to back. Select an object to see the properties appropriate to its type. Preview and PDF/PNG export use the same rendering rules.
+Choose **Workspace → New design**, or open the [showcase template](../examples/designer-showcase.labelize.json). Objects are listed from front to back. Select an object to see the properties appropriate to its type. Preview and PDF/PNG export use the same rendering rules.
 
 ## Objects and properties
 

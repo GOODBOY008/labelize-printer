@@ -9,7 +9,7 @@ The Studio mark is a folded white label shaped like an **L**, with three barcode
 Run from the repository root on macOS with ImageMagick installed:
 
 ```sh
-bash scripts/build-icons.sh
+bash scripts/build/icons.sh
 ```
 
 The script generates:

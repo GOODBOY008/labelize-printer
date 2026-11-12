@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-SCRIPTS = Path(__file__).resolve().parents[1] / "platform/macos/installer-scripts"
+SCRIPTS = Path(__file__).resolve().parents[2] / "platform/macos/installer-scripts"
 
 
 @unittest.skipUnless(os.uname().sysname == "Darwin", "macOS installer utilities required")

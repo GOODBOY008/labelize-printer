@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 [[ "$(uname -m)" == x86_64 ]] || { echo 'Build this amd64 package in an x86_64 environment.' >&2; exit 1; }
-version="$(python3 scripts/package-version.py)"
+version="$(python3 scripts/package/version.py)"
 profile="${1:-release}"
 binary_dir="${CARGO_TARGET_DIR:-target}/$profile"
 stage="dist/deb-$profile"

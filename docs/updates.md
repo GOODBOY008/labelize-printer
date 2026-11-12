@@ -1,8 +1,8 @@
 # Software updates
 
-[README](README.md) · [Architecture](ARCHITECTURE.md) · [Development](DEVELOPMENT.md)
+[README](../README.md) · [Architecture](architecture.md) · [Development](development.md)
 
-The first updater-enabled version is **Labelize Studio v0.4.0**. Upgrade once using an installer or Homebrew; v0.3.0 has no update UI. Follow [Migration](MIGRATION.md) to stop the old background service before installation and reopen Studio afterward.
+The first updater-enabled version is **Labelize Studio v0.4.0**. Upgrade once using an installer or Homebrew; v0.3.0 has no update UI. Follow [Migration](migration.md) to stop the old background service before installation and reopen Studio afterward.
 
 ## User flow
 
@@ -43,6 +43,6 @@ The handoff record is removed only after verification, then the existing service
 
 ## Release contract
 
-From v0.4.0 use the Studio installer names in [Migration](MIGRATION.md): Windows x64 EXE, macOS ARM64 and x86_64 PKG, Linux amd64 DEB. Include the updater binary and matching `--version` output from every component. Upload all installers and `SHA256SUMS` before marking a stable release latest. Every asset, including `SHA256SUMS`, must have a GitHub `sha256:` digest. Update the Homebrew tap with the same PKG hashes.
+From v0.4.0 use the Studio installer names in [Migration](migration.md): Windows x64 EXE, macOS ARM64 and x86_64 PKG, Linux amd64 DEB. Include the updater binary and matching `--version` output from every component. Upload all installers and `SHA256SUMS` before marking a stable release latest. Every asset, including `SHA256SUMS`, must have a GitHub `sha256:` digest. Update the Homebrew tap with the same PKG hashes.
 
 The updater does not require a custom release server, delta packages, GitHub login, a background GUI, or an automatic rollback mechanism. Native installer success/cancellation, system authorization, and actual upgrades need platform acceptance in addition to CI builds and isolated handoff tests.

@@ -3,6 +3,7 @@
 /dist/
 /output/
 /licenses/
+/.codegraph/
 .DS_Store
 *.log
 __pycache__/

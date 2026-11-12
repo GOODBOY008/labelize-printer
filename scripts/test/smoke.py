@@ -7,7 +7,7 @@ parser.add_argument('--profile', default='debug')
 parser.add_argument('--skip-ipp', action='store_true')
 parser.add_argument('--disk-full-dir', type=pathlib.Path, help='Dedicated small tmpfs for real ENOSPC testing')
 args = parser.parse_args()
-root = pathlib.Path(__file__).resolve().parents[1]
+root = pathlib.Path(__file__).resolve().parents[2]
 binary = root / 'target' / args.profile / ('labelize-printer-daemon.exe' if os.name == 'nt' else 'labelize-printer-daemon')
 
 def eventually(fn, timeout=30):

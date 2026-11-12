@@ -20,6 +20,6 @@ fi
 # Do not stop or replace an application that may have unsaved drafts or active jobs.
 # The in-app updater runs its handoff helper outside both installed bundles.
 if [[ "$volume" == / ]] && /usr/bin/pgrep -f '^/Applications/Labelize (Printer|Studio)\.app/Contents/MacOS/labelize-printer(-daemon|-ipp|-updater)?( |$)' >/dev/null; then
-  echo 'Quit Labelize and stop its background service before upgrading. See MIGRATION.md.' >&2
+  echo 'Quit Labelize and stop its background service before upgrading. See docs/migration.md in the Labelize Studio repository.' >&2
   exit 1
 fi

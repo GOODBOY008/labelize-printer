@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 project_root="$PWD"
 ssl_prefix="$project_root/.cache/openssl"
 if [[ -n "${LABELIZE_ARCH:-}" && "$LABELIZE_ARCH" != "$(uname -m)" ]]; then ssl_prefix="$ssl_prefix-$LABELIZE_ARCH"; fi
@@ -8,7 +8,7 @@ if [[ -f "$ssl_prefix/lib/pkgconfig/openssl.pc" ]]; then
   export PKG_CONFIG_PATH="$ssl_prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 fi
 profile="${1:-debug}"
-app_version="$(python3 scripts/package-version.py)"
+app_version="$(python3 scripts/package/version.py)"
 mkdir -p .cache "target/$profile"
 version=1.4.12
 archive=".cache/pappl-$version.tar.gz"

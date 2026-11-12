@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bundle the actual dependency notices alongside trial installers."""
 import os, pathlib, shutil, tomllib
-root = pathlib.Path(__file__).resolve().parents[1]
+root = pathlib.Path(__file__).resolve().parents[2]
 registry = pathlib.Path(os.environ.get('CARGO_HOME', pathlib.Path.home()/'.cargo')) / 'registry/src'
 out = root / 'licenses'; out.mkdir(exist_ok=True)
 rows = []
@@ -34,7 +34,7 @@ for source, name in [(root/'.cache/pappl-1.4.12/LICENSE','PAPPL-1.4.12.txt'),
                      (root/'vendor/xattr/PATCH.md','xattr-patch.md')]:
     if source.exists(): shutil.copyfile(source, out/name)
 (out/'INDEX.md').write_text('# Third-party notices\n\nGenerated from Cargo.lock and dependency sources present for this build.\n\n'
-    'PAPPL 1.4.12: Apache-2.0 with LLVM exception. Raster compatibility patches are in scripts/build-native.sh. '
+    'PAPPL 1.4.12: Apache-2.0 with LLVM exception. Raster compatibility patches are in scripts/build/native.sh. '
     'OpenSSL 3.5.9: Apache-2.0. CUPS and operating-system frameworks are dynamically linked system libraries. '
     'ZDesigner is installed separately from Zebra and is not redistributed.\n\n'
     '| Dependency | License expression | Bundled notice files |\n|---|---|---|\n' + '\n'.join(sorted(rows)) + '\n',

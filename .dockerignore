@@ -1,4 +1,5 @@
 target
 .cache
+.codegraph
 dist
 .git

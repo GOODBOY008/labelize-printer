@@ -6,7 +6,7 @@ p = argparse.ArgumentParser()
 p.add_argument('--profile', default='debug')
 p.add_argument('--target-dir', type=pathlib.Path, default=pathlib.Path('target'))
 a = p.parse_args()
-root = pathlib.Path(__file__).resolve().parents[1]
+root = pathlib.Path(__file__).resolve().parents[2]
 base = (root / a.target_dir / a.profile).resolve()
 suffix = '.exe' if os.name == 'nt' else ''
 daemon_bin = base / ('labelize-printer-daemon' + suffix)

@@ -1,8 +1,14 @@
 # Acceptance record
 
-Updated 2026-11-10. [README](README.md) · [Development guide](DEVELOPMENT.md) · [Architecture](ARCHITECTURE.md)
+Updated 2026-11-12. [README](../README.md) · [Development guide](development.md) · [Architecture](architecture.md)
 
 This record separates builds, automated protocol checks, system printing, and native desktop acceptance. Cross-compilation, a configured CI job, or a container test does not establish desktop compatibility on the corresponding target platform. Results below identify the version or development milestone to which they apply.
+
+## Platform modules and standalone updater
+
+- On macOS arm64, the workspace passed `cargo +1.99.0 check --workspace --all-targets --locked`. The normal Rust suite, the core tests with default features disabled, and the standalone updater tests passed with Rust 1.99.1. GPUI opened the two-page ZPL example. The RAW/IPP, update handoff, and installer migration checks passed, and the debug PKG included the separately built updater.
+- In a Debian 12 amd64 container on an Apple Silicon host, the workspace tests passed. GPUI opened and rendered both pages under Xvfb/Openbox and nested Weston with software Vulkan. The installed debug DEB processed a two-copy CUPS print through PAPPL and removed its queue and package afterward.
+- On macOS, the Windows x64 GNU release cross-build and NSIS packaging passed after removal of the Windows debug shader patch. Windows SDK FXC ran under Wine; all 16 compiled shaders were found in the desktop executable. Extraction confirmed that the desktop, daemon, and updater matched the release build outputs byte for byte. Native Windows MSVC build and installer execution were not part of this check. The [remaining acceptance work](#remaining-acceptance-work) tracks the native Windows ZDesigner and Linux desktop-session checks.
 
 ## Antialias and vector output (unreleased source)
 
@@ -115,7 +121,7 @@ Local checks on 2026-11-10 used macOS 27.2 Apple Silicon and a separate app/data
 - **Layout and localization:** Checked English and Chinese labels, widened the tools/layers panel to prevent barcode-name truncation, and inspected the Chinese layout at 480 × 360. The properties drawer opened by keyboard; Page Down reached geometry, rotation, layer actions, and export controls without horizontal overflow; Escape closed it. Automated mouse events remained intermittent on this host, so pointer dragging/resizing and physical scanner/printed-label acceptance are not marked as passed. Windows/Linux native desktop and IME checks remain outstanding.
 - **Background and builds:** All 15 native background smoke checks passed, including file languages, RAW task boundaries, worker crash/retry, restart, raster order/polarity/copies, and port conflicts. Native workspace build, workspace Clippy, formatting, Windows x64 GNU target checking, and Debian 12 amd64 desktop checking passed. These local checks are separate from release CI and installer acceptance. Vendored Labelize code was unchanged.
 
-See [Designer](DESIGNER.md) for the property inventory, input constraints, shortcuts, and template-version compatibility.
+See [Designer](designer.md) for the property inventory, input constraints, shortcuts, and template-version compatibility.
 
 ## Earlier desktop regression checks
 
@@ -153,9 +159,9 @@ These are the recorded virtual-printer baseline checks. The workspace's addition
 - Background smoke tests passed on ARM macOS, Intel binaries through Rosetta, and Debian 12 amd64. Coverage includes real RAW fragmentation/EOF, no early submission at `^XZ`, truncated ZPL failure, worker termination/retry, restart, IPP manifest errors, PWG 1/8-bit and Apple Raster, page order/polarity/dimensions, copy handling, truncated rasters, and first-start port conflicts.
 - Debian's `--disk-full-dir /disk-full-test` used a dedicated 64 KiB tmpfs to trigger `ENOSPC`. No output was committed; after freeing space, retry saved the job under the same ID.
 - The PAPPL C adapter built with Clang and GCC under `-Wall -Wextra -Werror`.
-- The installed DEB completed queue creation, native CUPS PDF filtering for two copies, a two-page PDF save, queue removal, and package removal. [scripts/linux-system-smoke.sh](scripts/linux-system-smoke.sh) reproduces this in a dedicated container.
+- The installed DEB completed queue creation, native CUPS PDF filtering for two copies, a two-page PDF save, queue removal, and package removal. [scripts/test/linux-system-smoke.sh](../scripts/test/linux-system-smoke.sh) reproduces this in a dedicated container.
 - X11 and Wayland screenshots were inspected for the complete Chinese interface and saved-task state. These checks do not cover physical GPU drivers, IME composition, desktop portals, or user login services.
-- Upstream Labelize checks for the parser API passed: 50 existing ZPL parser tests, five parser-option tests, three architecture tests, 170 golden tests, and three diff-report tests, for 231 total. Carrier, unit, and reverse reports were reviewed; golden images and reports were unchanged. See [dependency provenance](vendor/labelize/PROVENANCE.md).
+- The original Labelize snapshot passed 231 upstream checks, including 50 ZPL parser tests, five parser-option tests, three architecture tests, 170 golden tests, and three diff-report tests. Carrier, unit, and reverse reports were reviewed, with the golden images and reports unchanged. See the [original dependency provenance](https://github.com/GOODBOY008/labelize-studio/blob/c8ab574ae6595bb29053e8c51c481e5c3e577396/vendor/labelize/PROVENANCE.md).
 
 The ordinary background smoke suite uses temporary data and does not create a system queue or login service. The installed-package test creates and removes those resources inside its dedicated container.
 
@@ -178,7 +184,7 @@ Output failure and retry handling are implemented, but unexecuted fault scenario
 
 The v0.4.0 product name is Labelize Studio; the system queue remains Labelize Printer.
 The existing data directory, executable names, IPC, template formats, login-service
-identifiers, and OS package identities are retained. See [Migration](MIGRATION.md).
+identifiers, and OS package identities are retained. See [Migration](migration.md).
 
 Local validation on macOS 27.2 ARM64:
 

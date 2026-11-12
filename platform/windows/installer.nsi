@@ -6,7 +6,7 @@ Var UpdateMode
 !define MUI_FINISHPAGE_RUN_FUNCTION LaunchDesktop
 Name "Labelize Studio"
 !ifndef APP_VERSION
-  !error "Pass APP_VERSION from scripts/package-version.py"
+  !error "Pass APP_VERSION from scripts/package/version.py"
 !endif
 !ifndef BIN_DIR
   !define BIN_DIR "..\..\target\release"

@@ -1,20 +1,20 @@
 # Development guide
 
-[README](README.md) · [Architecture](ARCHITECTURE.md) · [Acceptance record](ACCEPTANCE.md)
+[README](../README.md) · [Architecture](architecture.md) · [Acceptance record](acceptance.md)
 
 Run the commands below from the repository root. Build instructions describe the current source tree; published installers may contain an earlier feature set.
 
 The product is **Labelize Studio**. Existing crate, executable, environment-variable,
 service, and data-directory names retain `labelize-printer` compatibility identifiers.
-See [Migration](MIGRATION.md) for the boundary between branding and persistent identity.
+See [Migration](migration.md) for the boundary between branding and persistent identity.
 
 ## Prerequisites
 
 - Rust 1.99 or later. CI pins Rust 1.99.1; use `--locked` to keep dependency versions reproducible.
 - A native C/C++ toolchain and Python 3.11 or later.
 - macOS: Xcode Command Line Tools and `pkg-config`. GPUI uses runtime Metal shader compilation, so an offline shader build is not required.
-- Linux: CUPS, Vulkan, X11/Wayland, font, and other native development libraries listed in [scripts/linux.Dockerfile](scripts/linux.Dockerfile). The supplied build image uses Debian 12.
-- Windows: the x64 MSVC toolchain. NSIS is required for packaging.
+- Linux: CUPS, Vulkan, X11/Wayland, font, and other native development libraries listed in [scripts/build/linux.Dockerfile](../scripts/build/linux.Dockerfile). The supplied build image uses Debian 12.
+- Windows: the x64 MSVC toolchain and a Windows SDK with `fxc.exe` for release builds. NSIS is required for packaging.
 
 OpenSSL and PAPPL are built by the supplied scripts on macOS and Linux. Their versions and checksums are pinned there. Windows uses the RAW receiver and does not require the PAPPL adapter.
 
@@ -24,8 +24,8 @@ OpenSSL and PAPPL are built by the supplied scripts on macOS and Linux. Their ve
 
 ```sh
 cargo build --workspace --locked
-bash scripts/build-openssl.sh
-bash scripts/build-native.sh
+bash scripts/build/openssl.sh
+bash scripts/build/native.sh
 target/debug/labelize-printer
 ```
 
@@ -40,7 +40,7 @@ cargo build --workspace --locked
 .\target\debug\labelize-printer.exe
 ```
 
-Debug builds accept `LABELIZE_PRINTER_WINDOW_SIZE=1000x720` (or `1440x900`, `480x360`) for reproducible layout checks. This override is not compiled into release builds. Use a dedicated `LABELIZE_PRINTER_HOME` when checking recovery or failure cases.
+On Windows, GPUI debug builds compile shaders at startup from the source checkout used for the build. Debug builds accept `LABELIZE_PRINTER_WINDOW_SIZE=1000x720` (or `1440x900`, `480x360`) for reproducible layout checks. This override is not compiled into release builds. Use a dedicated `LABELIZE_PRINTER_HOME` when checking recovery or failure cases.
 
 Opening the desktop starts the background service when needed. System-queue installation is a separate action in **Settings → System printer**. The service runs as the current user and continues after the desktop closes.
 
@@ -98,14 +98,15 @@ Removing the queue or application does not delete saved output, job history, or 
 ```sh
 cargo fmt --all --check
 cargo test -p labelize-printer-updater --locked
+cargo test -p labelize-printer-core --no-default-features --locked
 cargo test -p labelize-printer-core --locked
 cargo test -p labelize-printer --lib --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 ```
 
-The desktop library tests cover draft recovery (including extended styles and incomplete property input), write failures, source conflicts, stale preview callbacks, cancellation/priority scheduling, and preview-cache reuse, revision isolation, cancellation, and byte-budget eviction without a GPU. These run in each package CI job. The core tests cover job persistence, output commits, raster metadata, file-language previews, and portable designs. Consult the [acceptance record](ACCEPTANCE.md) for what has actually been run on each platform.
+The desktop library tests cover draft recovery (including extended styles and incomplete property input), write failures, source conflicts, stale preview callbacks, cancellation/priority scheduling, and preview-cache reuse, revision isolation, cancellation, and byte-budget eviction without a GPU. These run in each package CI job. The core tests cover job persistence, output commits, raster metadata, file-language previews, and portable designs. Consult the [acceptance record](acceptance.md) for what has actually been run on each platform.
 
-`cargo test -p labelize-printer-core --test designer --locked` exercises all ten barcode formats through an independent decoder at 8/12 dots/mm and four rotations (80 combinations). It also checks style-dependent pixels, strict barcode validation, rotated geometry and locking, template serialization, PNG/PDF embedded-pixel equality, and a version-1 fixture captured from the previous implementation. Barcode decoding uses the object rectangle, including its quiet zone and optional caption. See [fixture provenance](crates/core/tests/fixtures/README.md); do not regenerate the compatibility image to conceal a rendering regression.
+`cargo test -p labelize-printer-core --test designer --locked` exercises all ten barcode formats through an independent decoder at 8/12 dots/mm and four rotations (80 combinations). It also checks style-dependent pixels, strict barcode validation, rotated geometry and locking, template serialization, PNG/PDF embedded-pixel equality, and a version-1 fixture captured from the previous implementation. Barcode decoding uses the object rectangle, including its quiet zone and optional caption. See [fixture provenance](../crates/core/tests/fixtures/README.md); do not regenerate the compatibility image to conceal a rendering regression.
 
 On a Mac with an available Metal device, the vendored atlas regression exercises repeated eviction and reuse while a neighboring image stays live. It is ignored by default because headless CI runners may not expose a GPU. Runtime shader compilation avoids requiring the optional offline Metal toolchain:
 
@@ -138,18 +139,30 @@ prove that PDF text and paths remain native.
 Build the binaries and, on macOS/Linux, the native adapter first:
 
 ```sh
-python3 scripts/smoke.py
+python3 scripts/test/smoke.py
 ```
 
 On Windows:
 
 ```powershell
-python scripts/smoke.py --skip-ipp
+python scripts/test/smoke.py --skip-ipp
 ```
 
 Add `--profile release` to test release binaries. These tests start a real daemon in a temporary directory and exercise RAW TCP, job recovery, file submission, and IPP where available. They do not register a system queue or login service.
 
 `--disk-full-dir /path/to/test-tmpfs` exercises real `ENOSPC` handling. It requires a dedicated, empty, small test filesystem that the test can deliberately fill. The ordinary smoke suite does not fill the host disk.
+
+### Desktop smoke test
+
+From an active desktop session, launch GPUI with the two-page ZPL example and verify its preview and background service:
+
+```sh
+python3 scripts/test/desktop-smoke.py --bin-dir target/debug
+```
+
+Run it once from an X11 session and once from a Wayland session when testing both Linux backends. The test uses temporary application data. The platform-specific printing and login checks are listed in the [acceptance record](acceptance.md#remaining-acceptance-work).
+
+The Linux CI job also runs this test under Xvfb/Openbox and nested Weston using software Vulkan.
 
 ### Installed-package CUPS test
 
@@ -158,37 +171,41 @@ This test installs a DEB, registers a queue, submits a PDF through CUPS, checks 
 First build the package in Debian 12:
 
 ```sh
-docker build --platform linux/amd64 -f scripts/linux.Dockerfile -t labelize-printer-build .
+docker build --platform linux/amd64 -f scripts/build/linux.Dockerfile -t labelize-printer-build .
 docker run --rm --platform linux/amd64 -v "$PWD:/build" labelize-printer-build bash -ec '
-  cargo build --workspace --release --locked
-  bash scripts/build-openssl.sh
-  bash scripts/build-native.sh release
-  python3 scripts/collect-licenses.py
-  bash scripts/package-linux.sh
+  cargo build -p labelize-printer -p labelize-printer-daemon --release --locked
+  cargo build -p labelize-printer-updater --release --locked
+  bash scripts/build/openssl.sh
+  bash scripts/build/native.sh release
+  python3 scripts/package/collect-licenses.py
+  bash scripts/package/linux.sh
 '
 ```
 
 Then test the installed package in a separate container:
 
 ```sh
-docker build --platform linux/amd64 -f scripts/linux-system.Dockerfile -t labelize-printer-system-test .
-docker run --rm --platform linux/amd64 -v "$PWD:/build" labelize-printer-system-test bash scripts/linux-system-smoke.sh
+docker build --platform linux/amd64 -f scripts/test/linux-system.Dockerfile -t labelize-printer-system-test .
+docker run --rm --platform linux/amd64 -v "$PWD:/build" labelize-printer-system-test bash scripts/test/linux-system-smoke.sh
 ```
 
 Use a dedicated checkout for container builds: they write build artifacts into the mounted repository. Container results do not replace desktop, input-method, GPU, or login-service acceptance.
 
 ## Package installers
 
+The package recipes build the updater separately with its shared state and IPC dependencies.
+
 Installer versions come from the workspace version in `Cargo.toml`. Output goes to `dist/`. License collection must run before packaging.
 
 ### macOS
 
 ```sh
-cargo build --workspace --release --locked
-bash scripts/build-openssl.sh
-bash scripts/build-native.sh release
-python3 scripts/collect-licenses.py
-bash scripts/package-macos.sh
+cargo build -p labelize-printer -p labelize-printer-daemon --release --locked
+cargo build -p labelize-printer-updater --release --locked
+bash scripts/build/openssl.sh
+bash scripts/build/native.sh release
+python3 scripts/package/collect-licenses.py
+bash scripts/package/macos.sh
 ```
 
 This produces a PKG for the build host's architecture. The script signs the app bundle ad hoc, checks its icon resource, and rejects dependencies on build-machine library paths. The PKG has no public distribution signature or notarization.
@@ -198,39 +215,40 @@ This produces a PKG for the build host's architecture. The script signs the app 
 Build on Debian 12 x64, either natively or using the container recipe above:
 
 ```sh
-cargo build --workspace --release --locked
-bash scripts/build-openssl.sh
-bash scripts/build-native.sh release
-python3 scripts/collect-licenses.py
-bash scripts/package-linux.sh
+cargo build -p labelize-printer -p labelize-printer-daemon --release --locked
+cargo build -p labelize-printer-updater --release --locked
+bash scripts/build/openssl.sh
+bash scripts/build/native.sh release
+python3 scripts/package/collect-licenses.py
+bash scripts/package/linux.sh
 ```
 
 ### Windows
 
-With MSVC and `makensis` available in PowerShell:
+Build Windows installers from the release profile. Run the commands below from PowerShell with MSVC, the Windows SDK and `makensis` available. Set `GPUI_FXC_PATH` to the full SDK path to `fxc.exe` if GPUI cannot find it.
 
 ```powershell
-cargo build --workspace --release --locked
-python scripts/collect-licenses.py
+cargo build -p labelize-printer -p labelize-printer-daemon --release --locked
+cargo build -p labelize-printer-updater --release --locked
+python scripts/package/collect-licenses.py
 New-Item -ItemType Directory -Force dist | Out-Null
-$version = python scripts/package-version.py
+$version = python scripts/package/version.py
 makensis "/DAPP_VERSION=$version" platform\windows\installer.nsi
 ```
 
-The repository configures a static MSVC C runtime. CI checks both executables for unintended dynamic Visual C++ runtime dependencies before packaging. A GNU cross-build for `x86_64-pc-windows-gnu` instead requires MinGW `gcc` and `windres`; `windres` embeds the icon and application manifest. Cross-compilation alone is not Windows runtime validation.
+The repository configures a static MSVC C runtime. CI checks the desktop, daemon and updater for unintended dynamic Visual C++ runtime dependencies before packaging. For local GNU cross-builds, MinGW `gcc` links the executable and `windres` embeds the icon and application manifest. The upstream GPUI release shader build runs on a Windows host.
 
 ### Icons and bundled patches
 
-The logo master is `platform/branding/labelize-studio.png`. See the [brand asset notes](platform/branding/README.md) for its design and generation prompt. After replacing the master, run `bash scripts/build-icons.sh` on macOS with ImageMagick installed to regenerate the desktop PNG, Linux PNG, Windows ICO, and macOS ICNS. Commit the master and all generated icons together. Linux packages install the 256 px and 512 px icons into the standard `hicolor` theme.
+The logo master is `platform/branding/labelize-studio.png`. See the [brand asset notes](../platform/branding/README.md) for its design and generation prompt. After replacing the master, run `bash scripts/build/icons.sh` on macOS with ImageMagick installed to regenerate the desktop PNG, Linux PNG, Windows ICO, and macOS ICNS. Commit the master and all generated icons together. Linux packages install the 256 px and 512 px icons into the standard `hicolor` theme.
 
 Keep the provenance of bundled sources intact:
 
-- [Labelize snapshot](vendor/labelize/PROVENANCE.md): engine revision and upstream parser checks.
-- [GPUI patches](vendor/gpui/PATCH.md): X11 visual selection, Windows debug shaders, and Metal image-atlas eviction.
-- [xattr patch](vendor/xattr/PATCH.md): Linux/Android compatibility.
-- [Third-party notices](THIRD_PARTY_NOTICES.md): licenses and packaged notices.
+- [GPUI patches](../vendor/gpui/PATCH.md): X11 visual selection and Metal image-atlas eviction.
+- [xattr patch](../vendor/xattr/PATCH.md): Linux/Android compatibility.
+- [Third-party notices](../THIRD_PARTY_NOTICES.md): licenses and packaged notices.
 
-Parser fixes belong upstream in Labelize and require its rendering regression suite before refreshing the vendored snapshot. Platform integration and job management belong in this repository.
+Parser fixes belong upstream in Labelize and require its rendering regression suite before updating the version in the [core manifest](../crates/core/Cargo.toml). Platform integration and job management belong in this repository.
 
 ## Upgrades and diagnostics
 
@@ -238,14 +256,14 @@ Before replacing an installed build, let jobs finish, close the desktop, and run
 
 Set `LABELIZE_PRINTER_DEBUG=1` and launch the desktop from a terminal to send startup diagnostics to stderr. For job failures, inspect **Jobs** or `job TASK_UUID`; inputs and diagnostics are retained for retry. Include the OS, architecture, source commit or installer version, and input route in an issue.
 
-The [build workflow](.github/workflows/build.yml) produces Windows x64, macOS ARM64/x86_64, and Debian 12 amd64 installers. Its build and protocol checks are separate from the [remaining native acceptance work](ACCEPTANCE.md#remaining-acceptance-work).
+The [build workflow](../.github/workflows/build.yml) produces Windows x64, macOS ARM64/x86_64, and Debian 12 amd64 installers. Its build and protocol checks are separate from the [remaining native acceptance work](acceptance.md#remaining-acceptance-work).
 
 ## Update checks and installer handoff
 
-See [UPDATES.md](UPDATES.md) for the protocol and recovery contract. The updater is a separate crate and binary without GPUI. The CI package matrix includes it in all four installers and runs its tests plus the real-service handoff smoke test:
+See [Software updates](updates.md) for the protocol and recovery contract. The updater is a separate crate and binary without GPUI. The CI package matrix includes it in all four installers and runs its tests plus the real-service handoff smoke test:
 
 ```sh
-python3 scripts/update-smoke.py --profile debug
+python3 scripts/test/update-smoke.py --profile debug
 cargo test -p labelize-printer-updater live_release_integrity -- --ignored --nocapture
 ```
 

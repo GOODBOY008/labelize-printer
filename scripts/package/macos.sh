@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")/.."
-version="$(python3 scripts/package-version.py)"
+cd "$(dirname "$0")/../.."
+version="$(python3 scripts/package/version.py)"
 # Earlier Printer bundles used build number 5; keep Apple's bundle ordering monotonic.
 build_version="$(python3 -c 'import sys; a,b,c=map(int,sys.argv[1].split(".")); print(f"{a+6}.{b}.{c}")' "$version")"
 profile="${1:-release}"
