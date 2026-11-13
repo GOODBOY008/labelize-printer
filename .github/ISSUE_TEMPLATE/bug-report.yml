@@ -1,0 +1,42 @@
+name: Bug report
+description: Report a reproducible problem in Labelize Studio.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search [existing issues](https://github.com/GOODBOY008/labelize-studio/issues?q=is%3Aissue) for the same problem. For help with setup or usage, ask in [Discussions](https://github.com/GOODBOY008/labelize-studio/discussions/categories/q-a).
+  - type: input
+    id: version
+    attributes:
+      label: Studio version
+      description: Enter the release version or the commit you built from.
+      placeholder: v0.5.0
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and architecture
+      placeholder: Windows 11 x64, macOS 15 arm64, or Debian 12 x64
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include the input format and how you opened, designed, or printed the label.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+      description: Describe what you expected and what happened, including any error message.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sample files, screenshots, or logs
+      description: Attach a minimal reproduction if possible. Remove private label data and credentials from attachments.

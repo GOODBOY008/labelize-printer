@@ -1,0 +1,23 @@
+name: Feature request
+description: Propose a change to Labelize Studio.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: use-case
+    attributes:
+      label: What are you trying to do?
+      description: Describe your workflow and what is difficult today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What should Studio do?
+      description: Describe the behavior you want and how it would fit into your workflow.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Include any relevant platform, printer model, file format, or example.
