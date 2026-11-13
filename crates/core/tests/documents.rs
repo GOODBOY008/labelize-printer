@@ -2,12 +2,12 @@
 
 use labelize_printer_core::{
     design::{DesignDocument, DesignObject, ObjectKind},
-    document::{self, DocumentKind, PreviewRequest},
+    document::{self, DocumentKind, PreviewRequest, UnsupportedBarTender},
     *,
 };
-use std::{fs, io::Cursor};
+use std::{fs, io::Cursor, path::Path};
 
-fn settings(path: &std::path::Path) -> Settings {
+fn settings(path: &Path) -> Settings {
     Settings {
         output_dir: path.join("output"),
         width_mm: 50.,
@@ -56,7 +56,7 @@ fn all_file_languages_preview_and_output_match_pixels_and_sizes() {
     for (kind, name, bytes) in samples() {
         let input = temp.path().join(name);
         fs::write(&input, &bytes).unwrap();
-        assert_eq!(DocumentKind::detect(&input, &bytes), kind);
+        assert_eq!(DocumentKind::detect(&input, &bytes).unwrap(), kind);
         let dir = temp.path().join(kind.name());
         let preview = document::preview(
             &PreviewRequest {
@@ -99,6 +99,71 @@ fn all_file_languages_preview_and_output_match_pixels_and_sizes() {
             options,
             "Document options must not overwrite queue settings"
         );
+    }
+}
+
+#[test]
+fn rejects_bartender_designs_on_open_and_in_previews_with_a_saved_language() {
+    let input = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/bartender-sample.btw");
+    let bytes = document::read_input(&input).unwrap();
+    for path in [input.as_path(), Path::new("renamed.prn")] {
+        let error = DocumentKind::detect(path, &bytes).unwrap_err().to_string();
+        assert!(error.contains("ZPL printer driver"));
+        assert!(error.contains("Print to File"));
+        assert!(error.contains(".prn"));
+    }
+
+    let temp = tempfile::tempdir().unwrap();
+    let error = document::preview(
+        &PreviewRequest {
+            input,
+            kind: DocumentKind::Tspl,
+            settings: settings(temp.path()),
+        },
+        temp.path(),
+    )
+    .unwrap_err();
+    assert!(error.is::<UnsupportedBarTender>());
+    assert!(!temp.path().join("pages.json").exists());
+}
+
+#[test]
+fn prn_files_detect_and_render_zpl_and_tspl_bar_commands() {
+    let temp = tempfile::tempdir().unwrap();
+    let cases = [
+        (
+            "zpl.prn",
+            b"^XA^PW400^LL240^FO10,10^GB20,20,20^FS^XZ".as_slice(),
+            DocumentKind::Zpl,
+        ),
+        (
+            "tspl.prn",
+            b"BAR 10,10,20,20\nPRINT 1\n".as_slice(),
+            DocumentKind::Tspl,
+        ),
+    ];
+    for (name, bytes, expected_kind) in cases {
+        let input = temp.path().join(name);
+        fs::write(&input, bytes).unwrap();
+        let kind = DocumentKind::detect(&input, &document::read_input(&input).unwrap()).unwrap();
+        assert_eq!(kind, expected_kind, "{name}");
+        let directory = temp.path().join(kind.name());
+        let pages = document::preview(
+            &PreviewRequest {
+                input,
+                kind,
+                settings: settings(temp.path()),
+            },
+            &directory,
+        )
+        .unwrap();
+        assert_eq!(pages.len(), 1, "{name}");
+        let pixels = image::open(directory.join(&pages[0].file))
+            .unwrap()
+            .into_luma8();
+        assert_eq!(pixels.dimensions(), (400, 240), "{name}");
+        assert_eq!(pixels.get_pixel(15, 15)[0], 0, "{name}");
+        assert_eq!(pixels.get_pixel(1, 1)[0], 255, "{name}");
     }
 }
 
@@ -178,7 +243,10 @@ fn portable_design_roundtrips_with_embedded_assets_and_pdf_dimensions() {
     assert_eq!(restored, design);
     let input = temp.path().join("设计.labelize.json");
     fs::write(&input, &bytes).unwrap();
-    assert_eq!(DocumentKind::detect(&input, &bytes), DocumentKind::Design);
+    assert_eq!(
+        DocumentKind::detect(&input, &bytes).unwrap(),
+        DocumentKind::Design
+    );
     let mut pixels = None;
     document::render(&bytes, DocumentKind::Design, &settings, |p| {
         pixels = Some(p.pixels);
