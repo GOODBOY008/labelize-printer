@@ -1239,6 +1239,57 @@ fn section(title: &'static str) -> Div {
 }
 
 impl Studio {
+    fn operation_notice(&self, short: bool, cx: &mut Context<Self>) -> Option<Div> {
+        let notice = self.notice.as_ref()?;
+        let text = match notice {
+            Ok(s) | Err(s) => s,
+        };
+        Some(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .px_3()
+                .py_1()
+                .bg(rgb(if notice.is_err() { 0xfff0f0 } else { 0xedf8f3 }))
+                .text_xs()
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .max_h(px(if short { 44. } else { 100. }))
+                        .id("document-notice-scroll")
+                        .overflow_y_scroll()
+                        .child(text.clone()),
+                )
+                .when(!self.outputs.is_empty(), |d| {
+                    d.child(
+                        Button::new("open-output")
+                            .small()
+                            .ghost()
+                            .label(self.t("打开", "Open"))
+                            .on_click(cx.listener(|s, _, _, cx| {
+                                if let Some(path) = s.outputs.first() {
+                                    if let Err(e) = open::that_detached(path) {
+                                        s.fail(e, cx);
+                                    }
+                                }
+                            })),
+                    )
+                })
+                .child(
+                    Button::new("dismiss-document-notice")
+                        .small()
+                        .ghost()
+                        .icon(IconName::Close)
+                        .on_click(cx.listener(|s, _, _, cx| {
+                            s.notice = None;
+                            cx.notify();
+                        })),
+                ),
+        )
+    }
+
     fn inspector(&self, cx: &mut Context<Self>) -> AnyElement {
         let mut content = div()
             .flex()
@@ -1741,21 +1792,27 @@ impl Studio {
 }
 impl Render for Studio {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let height = f32::from(window.viewport_size().height);
+        let short = height < 500.;
         if self.unsupported_bartender {
-            return div().p_3().child(
-                div()
-                    .rounded_md()
-                    .p_3()
-                    .text_sm()
-                    .text_color(rgb(0xa22a34))
-                    .bg(rgb(0xfff0f0))
-                    .child(self.language.text(Text::BarTenderExport)),
-            );
+            return div()
+                .p_3()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(
+                    div()
+                        .rounded_md()
+                        .p_3()
+                        .text_sm()
+                        .text_color(rgb(0xa22a34))
+                        .bg(rgb(0xfff0f0))
+                        .child(self.language.text(Text::BarTenderExport)),
+                )
+                .children(self.operation_notice(short, cx));
         }
         let width = f32::from(window.viewport_size().width);
-        let height = f32::from(window.viewport_size().height);
         let narrow = width < 700.;
-        let short = height < 500.;
         let wide = width >= 1000.;
         let inspector_width = 260.;
         let layers_width = 224.;
@@ -2186,7 +2243,7 @@ impl Render for Studio {
                         })),
                 );
         }
-        let mut root = div()
+        let root = div()
             .track_focus(&self.focus)
             .on_action(cx.listener(|s, _: &ScrollPageDown, _, cx| s.scroll_drawer(-1., cx)))
             .on_action(cx.listener(|s, _: &ScrollPageUp, _, cx| s.scroll_drawer(1., cx)))
@@ -2227,56 +2284,8 @@ impl Render for Studio {
             .flex_col()
             .min_w_0()
             .min_h_0()
-            .child(content);
-        if let Some(notice) = &self.notice {
-            let text = match notice {
-                Ok(s) | Err(s) => s,
-            };
-            root = root.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .px_3()
-                    .py_1()
-                    .bg(rgb(if notice.is_err() { 0xfff0f0 } else { 0xedf8f3 }))
-                    .text_xs()
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .max_h(px(if short { 44. } else { 100. }))
-                            .id("document-notice-scroll")
-                            .overflow_y_scroll()
-                            .child(text.clone()),
-                    )
-                    .when(!self.outputs.is_empty(), |d| {
-                        d.child(
-                            Button::new("open-output")
-                                .small()
-                                .ghost()
-                                .label(self.t("打开", "Open"))
-                                .on_click(cx.listener(|s, _, _, cx| {
-                                    if let Some(path) = s.outputs.first() {
-                                        if let Err(e) = open::that_detached(path) {
-                                            s.fail(e, cx);
-                                        }
-                                    }
-                                })),
-                        )
-                    })
-                    .child(
-                        Button::new("dismiss-document-notice")
-                            .small()
-                            .ghost()
-                            .icon(IconName::Close)
-                            .on_click(cx.listener(|s, _, _, cx| {
-                                s.notice = None;
-                                cx.notify();
-                            })),
-                    ),
-            );
-        }
+            .child(content)
+            .children(self.operation_notice(short, cx));
         root.child(
             div()
                 .h(px(26.))
