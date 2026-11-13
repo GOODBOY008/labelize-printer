@@ -1,5 +1,5 @@
 use crate::{
-    i18n::Language,
+    i18n::{Language, Text},
     studio::Studio,
     studio_worker::Preview,
     ui::{ACCENT, BORDER, MUTED},
@@ -406,7 +406,7 @@ impl Workbench {
         let read = cx.background_executor().spawn(async move {
             let bytes = document::read_input(&target)?;
             let mut draft = Draft::new(settings);
-            draft.kind = DocumentKind::detect(&target, &bytes);
+            draft.kind = DocumentKind::detect(&target, &bytes)?;
             draft.design = if draft.kind == DocumentKind::Design {
                 let d: DesignDocument = serde_json::from_slice(&bytes)?;
                 d.validate(draft.options.dpmm)?;
@@ -439,7 +439,16 @@ impl Workbench {
                         s.changed(cx);
                     }
                     Err(e) => {
-                        s.notice = Some(Notice::Message(format!("{}: {e:#}", path.display())))
+                        let message = if e.is::<document::UnsupportedBarTender>() {
+                            format!(
+                                "{}\n{}",
+                                path.display(),
+                                s.language.text(Text::BarTenderExport)
+                            )
+                        } else {
+                            format!("{}: {e:#}", path.display())
+                        };
+                        s.notice = Some(Notice::Message(message));
                     }
                 }
                 cx.notify();
@@ -705,7 +714,7 @@ impl Render for Workbench {
                         OutputFormat::Pdf => self.t("导出 PDF", "Export PDF"),
                         OutputFormat::Png => self.t("导出 PNG", "Export PNG"),
                     })
-                    .disabled(active.as_ref().is_none_or(|t| t.read(cx).is_submitting()))
+                    .disabled(active.as_ref().is_none_or(|t| !t.read(cx).can_export()))
                     .on_click(cx.listener(|s, _, w, cx| s.export(w, cx))),
             );
         let mut root = div()

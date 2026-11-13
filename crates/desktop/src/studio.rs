@@ -1,5 +1,5 @@
 use crate::{
-    i18n::Language,
+    i18n::{Language, Text},
     studio_worker::{self, Preview},
     ui::{ScrollPageDown, ScrollPageUp, ACCENT, BORDER, MUTED},
 };
@@ -60,6 +60,7 @@ pub struct Studio {
     source: Vec<u8>,
     kind: DocumentKind,
     design: Option<DesignDocument>,
+    unsupported_bartender: bool,
     selected: Option<usize>,
     fields: Vec<Entity<InputState>>,
     editor: Entity<InputState>,
@@ -142,7 +143,9 @@ impl Studio {
             .detach();
         }
         let raw_fields = draft.fields.clone();
-        let editable = draft.design.is_none() && editable_source(&draft.source);
+        let unsupported_bartender = document::check_input_format(&draft.source).is_err();
+        let editable =
+            !unsupported_bartender && draft.design.is_none() && editable_source(&draft.source);
         let mut this = Self {
             id: draft.id,
             language,
@@ -156,11 +159,12 @@ impl Studio {
             source: draft.source,
             kind: draft.kind,
             design: draft.design,
+            unsupported_bartender,
             selected: draft.selected,
             fields,
             editor,
             editable,
-            stale: true,
+            stale: !unsupported_bartender,
             revision: draft.revision,
             loading: false,
             saving: false,
@@ -182,7 +186,7 @@ impl Studio {
             redo: Vec::new(),
             drag: None,
             queue,
-            due: Some(Instant::now()),
+            due: (!unsupported_bartender).then(Instant::now),
             active: false,
             zoom: draft.zoom,
             source_mode: draft.source_mode,
@@ -230,6 +234,9 @@ impl Studio {
     }
     pub fn is_submitting(&self) -> bool {
         self.submitting
+    }
+    pub fn can_export(&self) -> bool {
+        !self.submitting && !self.loading && !self.unsupported_bartender
     }
     pub fn snapshot(&self, cx: &App) -> Draft {
         let mut d = Draft::new(self.options.clone());
@@ -466,6 +473,8 @@ impl Studio {
             !bytes.is_empty() && bytes.len() as u64 <= labelize_printer_core::MAX_INPUT_BYTES,
             "Input must be 1 byte to 64 MiB"
         );
+        document::check_input_format(&bytes)
+            .map_err(|_| anyhow::anyhow!(self.language.text(Text::BarTenderExport)))?;
         Ok(bytes)
     }
     fn fail(&mut self, error: impl std::fmt::Display, cx: &mut Context<Self>) {
@@ -604,7 +613,7 @@ impl Studio {
         cx.notify();
     }
     pub fn export(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.submitting || self.loading {
+        if !self.can_export() {
             return;
         }
         let bytes = match self.payload(cx) {
@@ -1732,6 +1741,17 @@ impl Studio {
 }
 impl Render for Studio {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.unsupported_bartender {
+            return div().p_3().child(
+                div()
+                    .rounded_md()
+                    .p_3()
+                    .text_sm()
+                    .text_color(rgb(0xa22a34))
+                    .bg(rgb(0xfff0f0))
+                    .child(self.language.text(Text::BarTenderExport)),
+            );
+        }
         let width = f32::from(window.viewport_size().width);
         let height = f32::from(window.viewport_size().height);
         let narrow = width < 700.;

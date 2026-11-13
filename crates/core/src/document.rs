@@ -11,7 +11,7 @@ use std::{
 #[cfg(feature = "render")]
 mod renderer;
 #[cfg(feature = "render")]
-pub use renderer::{parse, preview, render, vector_pdf};
+pub use renderer::{check_input_format, parse, preview, render, vector_pdf, UnsupportedBarTender};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

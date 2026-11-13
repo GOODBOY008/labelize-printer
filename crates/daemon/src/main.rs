@@ -139,7 +139,7 @@ fn run() -> Result<()> {
         Action::Refresh => (Request::RefreshPlatform, false),
         Action::Submit { path, wait, title } => {
             let path = fs::canonicalize(path)?;
-            let kind = document::DocumentKind::detect(&path, &document::read_input(&path)?);
+            let kind = document::DocumentKind::detect(&path, &document::read_input(&path)?)?;
             if kind == document::DocumentKind::Zpl {
                 (Request::SubmitZpl { path, title }, wait)
             } else {

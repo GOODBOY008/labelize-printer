@@ -79,6 +79,10 @@ impl Language {
         let (chinese, english) = match text {
             Text::Studio => ("工作台", "Workspace"),
             Text::StudioDescription => ("打开、编辑和预览标签文件，设计标签并保存 PDF / PNG。", "Open, edit and preview label files, design labels and save PDF / PNG."),
+            Text::BarTenderExport => (
+                "这是 BarTender 设计文件（.btw）。请在 BarTender 中选择 ZPL 打印机驱动，勾选「打印到文件」，保存为 .prn 后在 Labelize Studio 中打开。",
+                labelize_printer_core::document::UnsupportedBarTender::GUIDANCE,
+            ),
             Text::Setup => ("系统打印机", "System printer"),
             Text::Settings => ("设置", "Settings"),
             Text::Jobs => ("任务记录", "Jobs"),
@@ -184,6 +188,7 @@ impl Language {
 pub enum Text {
     Studio,
     StudioDescription,
+    BarTenderExport,
     Setup,
     Settings,
     Jobs,

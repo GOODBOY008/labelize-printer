@@ -7,38 +7,65 @@ use crate::{
 use anyhow::{ensure, Result};
 use labelize::{DrawerOptions, LabelInfo, OutputOptions, ZplParseOptions, ZplParser};
 use std::{
-    fs,
+    fmt, fs,
     path::{Path, PathBuf},
 };
 
+#[derive(Debug)]
+pub struct UnsupportedBarTender;
+
+impl UnsupportedBarTender {
+    pub const GUIDANCE: &str = "This is a BarTender design file (.btw). In BarTender, select a ZPL printer driver and use Print to File to save a .prn file. Open the .prn file in Labelize Studio.";
+}
+
+impl fmt::Display for UnsupportedBarTender {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::GUIDANCE)
+    }
+}
+
+impl std::error::Error for UnsupportedBarTender {}
+
+pub fn check_input_format(bytes: &[u8]) -> Result<(), UnsupportedBarTender> {
+    // The BarTender header starts with a word that also matches the TSPL BAR command.
+    if bytes
+        .trim_ascii_start()
+        .strip_prefix(b"Bar Tender Format File")
+        .is_some_and(|rest| matches!(rest.first(), None | Some(b'\r' | b'\n')))
+    {
+        return Err(UnsupportedBarTender);
+    }
+    Ok(())
+}
+
 impl DocumentKind {
-    pub fn detect(path: &Path, bytes: &[u8]) -> Self {
+    pub fn detect(path: &Path, bytes: &[u8]) -> Result<Self, UnsupportedBarTender> {
+        check_input_format(bytes)?;
         if path.file_name().is_some_and(|s| {
             s.to_string_lossy()
                 .to_ascii_lowercase()
                 .ends_with(".labelize.json")
         }) {
-            return Self::Design;
+            return Ok(Self::Design);
         }
         if bytes.iter().find(|b| !b.is_ascii_whitespace()) == Some(&b'{')
             && serde_json::from_slice::<DesignDocument>(bytes).is_ok()
         {
-            return Self::Design;
+            return Ok(Self::Design);
         }
-        match path
+        let extension = path
             .extension()
             .and_then(|s| s.to_str())
             .unwrap_or("")
-            .to_ascii_lowercase()
-            .as_str()
-        {
+            .to_ascii_lowercase();
+        Ok(match extension.as_str() {
             "zpl" => Self::Zpl,
             "epl" => Self::Epl,
             "tspl" | "tsc" => Self::Tspl,
             "cpcl" => Self::Cpcl,
             "dpl" => Self::Dpl,
             _ => Self::from_engine(labelize::detect_language(bytes)),
-        }
+        })
     }
     fn from_engine(language: labelize::Language) -> Self {
         match language {
@@ -57,6 +84,7 @@ pub fn parse(bytes: &[u8], kind: DocumentKind, settings: &Settings) -> Result<Ve
         !bytes.is_empty() && bytes.len() as u64 <= MAX_INPUT_BYTES,
         "Input must be 1 byte to 64 MiB"
     );
+    check_input_format(bytes)?;
     let labels = match kind {
         DocumentKind::Design => {
             vec![serde_json::from_slice::<DesignDocument>(bytes)?.to_label(settings.dpmm)?]
