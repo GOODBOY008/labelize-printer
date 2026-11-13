@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Studio questions and help
+    url: https://github.com/GOODBOY008/labelize-studio/discussions/categories/q-a
+    about: Get help with installation, label design, previews, and virtual printing.
+  - name: Labelize engine issues
+    url: https://github.com/GOODBOY008/labelize/issues
+    about: Report parsing or rendering bugs you can reproduce with the standalone Labelize engine.

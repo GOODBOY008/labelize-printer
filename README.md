@@ -6,7 +6,7 @@
 
 [![Build and package](https://github.com/GOODBOY008/labelize-studio/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/GOODBOY008/labelize-studio/actions/workflows/build.yml)
 
-[Download](https://github.com/GOODBOY008/labelize-studio/releases) · [Screenshots](#screenshots) · [Get started](#get-started) · [Designer guide](docs/designer.md) · [Build from source](docs/development.md) · [Report an issue](https://github.com/GOODBOY008/labelize-studio/issues)
+[Download](https://github.com/GOODBOY008/labelize-studio/releases) · [Screenshots](#screenshots) · [Get started](#get-started) · [Designer guide](docs/designer.md) · [Build from source](docs/development.md) · [Report an issue](https://github.com/GOODBOY008/labelize-studio/issues/new/choose) · [Discussions](https://github.com/GOODBOY008/labelize-studio/discussions)
 
 Labelize Studio (formerly Labelize Printer) is a desktop label workspace for **Windows, macOS, and Linux**. Create visual designs, open ZPL, EPL, TSPL/TSC, CPCL, and DPL files, preview labels side by side, and save the results as PDF or PNG. A multi-tab workspace keeps each document's edits, preview, and export settings together, with local drafts and session recovery.
 
@@ -164,7 +164,9 @@ See [Architecture](docs/architecture.md) for component responsibilities, task bo
 - [Documentation](docs/README.md) covers using, developing, and verifying Studio.
 - [Development guide](docs/development.md): build, run, CLI commands, tests, packaging, and troubleshooting.
 - [Acceptance record](docs/acceptance.md): automated checks, native desktop evidence, and outstanding platform tests.
-- [GitHub Issues](https://github.com/GOODBOY008/labelize-studio/issues): include your OS and architecture, version or commit, input route, expected result, and diagnostic message. Attach a minimal label sample with private data removed when possible.
+- Report reproducible Studio bugs and request features in [GitHub Issues](https://github.com/GOODBOY008/labelize-studio/issues/new/choose). Include the Studio version, OS and architecture, steps to reproduce, and a minimal sample with private data removed when possible.
+- Ask for help, discuss ideas, and share label workflows in [Studio Discussions](https://github.com/GOODBOY008/labelize-studio/discussions).
+- Report parser or renderer issues you can reproduce with the standalone Labelize CLI, API, or library in the [Labelize engine repository](https://github.com/GOODBOY008/labelize/issues).
 
 The current scope is one user, one computer, and one local queue. Jobs must be self-contained; printer resources are not shared between jobs. Network sharing and multiple-user queues are outside the current scope.
 
